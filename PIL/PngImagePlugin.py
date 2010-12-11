@@ -348,7 +348,7 @@ class PngImageFile(ImageFile.ImageFile):
 
             cid, pos, len = self.png.read()
 
-            if cid not in ["IDAT", "DDAT"]:
+            if cid not in [b"IDAT", b"DDAT"]:
                 self.png.push(cid, pos, len)
                 return ""
 

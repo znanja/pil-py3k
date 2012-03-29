@@ -2863,7 +2863,7 @@ _getattr(ImagingObject* self, char *name)
     if (strcmp(name, "id") == 0)
 	return PyLong_FromLong((long) self->image);
     if (strcmp(name, "ptr") == 0)
-        return PyCObject_FromVoidPtrAndDesc(self->image, IMAGING_MAGIC, NULL);
+        return PyCapsule_New(self->image, IMAGING_MAGIC, NULL);
     PyErr_SetString(PyExc_AttributeError, name);
     return NULL;
 }

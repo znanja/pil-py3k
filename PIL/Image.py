@@ -23,7 +23,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-VERSION = "1.1.6"
+VERSION = "1.1.6-znanja1"
 
 try:
     import warnings

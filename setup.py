@@ -139,6 +139,10 @@ class pil_build_ext(build_ext):
             # darwin ports installation directories
             add_directory(library_dirs, "/opt/local/lib")
             add_directory(include_dirs, "/opt/local/include")
+            
+        elif os.uname()[0] == "SunOS" and os.uname()[3][:6] == "Joyent":
+            add_directory(library_dirs, "/opt/local/lib")
+            add_directory(include_dirs, "/opt/local/include")
 
         add_directory(library_dirs, "/usr/local/lib")
         # FIXME: check /opt/stuff directories here?

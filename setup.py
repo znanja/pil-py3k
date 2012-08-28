@@ -140,7 +140,8 @@ class pil_build_ext(build_ext):
             add_directory(library_dirs, "/opt/local/lib")
             add_directory(include_dirs, "/opt/local/include")
             
-        elif os.uname()[0] == "SunOS" and os.uname()[3][:6] == "Joyent":
+        # SmartOS
+        elif os.uname()[0] == "SunOS" and os.uname()[3][:6] == "joyent":
             add_directory(library_dirs, "/opt/local/lib")
             add_directory(include_dirs, "/opt/local/include")
 

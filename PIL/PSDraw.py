@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library
-# $Id: PSDraw.py 2813 2006-10-07 10:11:35Z fredrik $
+# $Id$
 #
 # simple postscript graphics interface
 #
@@ -15,7 +15,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import EpsImagePlugin
+from . import EpsImagePlugin
 
 ##
 # Simple Postscript graphics interface.

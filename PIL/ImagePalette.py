@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: ImagePalette.py 2339 2005-03-25 08:02:17Z fredrik $
+# $Id$
 #
 # image palette object
 #
@@ -17,7 +17,7 @@
 #
 
 import array
-import Image
+from . import Image, ImageColor
 
 ##
 # Colour palette wrapper for palette mapped images.
@@ -28,14 +28,14 @@ class ImagePalette:
     def __init__(self, mode = "RGB", palette = None):
         self.mode = mode
         self.rawmode = None # if set, palette contains raw data
-        self.palette = palette or bytes(list(range(256)) * len(self.mode))
+        self.palette = palette or list(range(256))*len(self.mode)
         self.colors = {}
         self.dirty = None
         if len(self.mode)*256 != len(self.palette):
             raise ValueError("wrong palette size")
 
     def getdata(self):
-        # experimental: get palette contains in format suitable
+        # experimental: get palette contents in format suitable
         # for the low-level im.putpalette primitive
         if self.rawmode:
             return self.rawmode, self.palette
@@ -45,7 +45,7 @@ class ImagePalette:
         # experimental: convert palette to string
         if self.rawmode:
             raise ValueError("palette contains raw palette data")
-        if Image.isStringType(self.palette):
+        if Image.isBytesType(self.palette):
             return self.palette
         return array.array("B", self.palette).tostring()
 
@@ -58,8 +58,8 @@ class ImagePalette:
                 return self.colors[color]
             except KeyError:
                 # allocate new color slot
-                if Image.isStringType(self.palette):
-                    self.palette = list(map(int, self.palette))
+                if Image.isBytesType(self.palette):
+                    self.palette = list(self.palette)
                 index = len(self.colors)
                 if index >= 256:
                     raise ValueError("cannot allocate more than 256 colors")
@@ -100,21 +100,44 @@ def raw(rawmode, data):
 # --------------------------------------------------------------------
 # Factories
 
+def _make_linear_lut(black, white):
+    lut = []
+    if black == 0:
+        for i in range(256):
+            lut.append(white*i//255)
+    else:
+        raise NotImplementedError # FIXME
+    return lut
+
+def _make_gamma_lut(exp, mode="RGB"):
+    lut = []
+    for i in range(256):
+        lut.append(int(((i / 255.0) ** exp) * 255.0 + 0.5))
+    return lut
+
 def new(mode, data):
     return Image.core.new_palette(mode, data)
 
-def negative(mode = "RGB"):
+def negative(mode="RGB"):
     palette = list(range(256))
     palette.reverse()
     return ImagePalette(mode, palette * len(mode))
 
-def random(mode = "RGB"):
+def random(mode="RGB"):
     from random import randint
-    palette = list(map(lambda a, randint=randint:
-                  randint(0, 255), [0]*256*len(mode)))
+    palette = []
+    for i in range(256*len(mode)):
+        palette.append(randint(0, 255))
     return ImagePalette(mode, palette)
 
-def wedge(mode = "RGB"):
+def sepia(white="#fff0c0"):
+    r, g, b = ImageColor.getrgb(white)
+    r = _make_linear_lut(0, r)
+    g = _make_linear_lut(0, g)
+    b = _make_linear_lut(0, b)
+    return ImagePalette("RGB", r + g + b)
+
+def wedge(mode="RGB"):
     return ImagePalette(mode, list(range(256)) * len(mode))
 
 def load(filename):
@@ -127,7 +150,7 @@ def load(filename):
 
     if not lut:
         try:
-            import GimpPaletteFile
+            from . import GimpPaletteFile
             fp.seek(0)
             p = GimpPaletteFile.GimpPaletteFile(fp)
             lut = p.getpalette()
@@ -136,7 +159,7 @@ def load(filename):
 
     if not lut:
         try:
-            import GimpGradientFile
+            from . import GimpGradientFile
             fp.seek(0)
             p = GimpGradientFile.GimpGradientFile(fp)
             lut = p.getpalette()
@@ -145,7 +168,7 @@ def load(filename):
 
     if not lut:
         try:
-            import PaletteFile
+            from . import PaletteFile
             fp.seek(0)
             p = PaletteFile.PaletteFile(fp)
             lut = p.getpalette()

@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: SunImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # Sun image file handling
 #
@@ -20,7 +20,7 @@
 __version__ = "0.3"
 
 
-import Image, ImageFile, ImagePalette
+from . import Image, ImageFile, ImagePalette
 
 
 def i16(c):

@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: ImageTk.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # a Tk display interface
 #
@@ -25,7 +25,8 @@
 # See the README file for information on usage and redistribution.
 #
 
-import tkinter, Image
+import tkinter
+from . import Image
 
 ##
 # The <b>ImageTk</b> module contains support to create and modify

@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library
-# $Id: ImageMath.py 2508 2005-09-12 19:01:03Z fredrik $
+# $Id$
 #
 # a simple math add-on for the Python Imaging Library
 #
@@ -15,7 +15,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image
+from . import Image
 import _imagingmath
 
 VERBOSE = 0
@@ -107,9 +107,9 @@ class _Operand:
         return self.apply("mul", self, other)
     def __rmul__(self, other):
         return self.apply("mul", other, self)
-    def __div__(self, other):
+    def __truediv__(self, other):
         return self.apply("div", self, other)
-    def __rdiv__(self, other):
+    def __rtruediv__(self, other):
         return self.apply("div", other, self)
     def __mod__(self, other):
         return self.apply("mod", self, other)

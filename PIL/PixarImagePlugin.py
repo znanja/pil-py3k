@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: PixarImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # PIXAR raster support for PIL
 #
@@ -21,7 +21,7 @@
 
 __version__ = "0.1"
 
-import Image, ImageFile
+from . import Image, ImageFile
 
 #
 # helpers

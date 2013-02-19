@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: PcdImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # PCD file handling
 #
@@ -18,7 +18,7 @@
 __version__ = "0.1"
 
 
-import Image, ImageFile
+from . import Image, ImageFile
 
 ##
 # Image plugin for PhotoCD images.  This plugin only reads the 768x512
@@ -36,10 +36,10 @@ class PcdImageFile(ImageFile.ImageFile):
         self.fp.seek(2048)
         s = self.fp.read(2048)
 
-        if s[:4] != b"PCD_":
+        if s[:4] != "PCD_":
             raise SyntaxError("not a PCD file")
 
-        orientation = s[1538] & 3
+        orientation = ord(s[1538]) & 3
         if orientation == 1:
             self.tile_post_rotate = 90 # hack
         elif orientation == 3:
@@ -57,7 +57,7 @@ class PcdImageFile(ImageFile.ImageFile):
         d, e, o, a = self.tile[0]
 
         if size:
-            scale = max(self.size[0] // size[0], self.size[1] // size[1])
+            scale = max(self.size[0] / size[0], self.size[1] / size[1])
             for s, o in [(4,0*2048), (2,0*2048), (1,96*2048)]:
                 if scale >= s:
                     break

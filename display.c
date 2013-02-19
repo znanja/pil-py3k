@@ -1,8 +1,7 @@
 /*
  * The Python Imaging Library.
- * $Id: display.c 2751 2006-06-18 19:50:45Z fredrik $
  *
- * display support
+ * display support (and other windows-related stuff)
  *
  * History:
  * 1996-05-13 fl  Windows DIB support
@@ -15,6 +14,7 @@
  * 2002-11-25 fl  Added GetDC/ReleaseDC helpers
  * 2003-05-21 fl  Added create window support (including window callback)
  * 2003-09-05 fl  Added fromstring/tostring methods
+ * 2009-03-14 fl  Added WMF support (from pilwmf)
  *
  * Copyright (c) 1997-2003 by Secret Labs AB.
  * Copyright (c) 1996-1997 by Fredrik Lundh.
@@ -32,8 +32,10 @@
 
 #include "Imaging.h"
 
+#include "py3.h"
+
 /* -------------------------------------------------------------------- */
-/* Windows DIB support	*/
+/* Windows DIB support    */
 
 #ifdef WIN32
 
@@ -44,7 +46,7 @@ typedef struct {
     ImagingDIB dib;
 } ImagingDisplayObject;
 
-static PyTypeObject ImagingDisplayType;
+staticforward PyTypeObject ImagingDisplayType;
 
 static ImagingDisplayObject*
 _new(const char* mode, int xsize, int ysize)
@@ -53,12 +55,12 @@ _new(const char* mode, int xsize, int ysize)
 
     display = PyObject_New(ImagingDisplayObject, &ImagingDisplayType);
     if (display == NULL)
-	return NULL;
+    return NULL;
 
     display->dib = ImagingNewDIB(mode, xsize, ysize);
     if (!display->dib) {
-	Py_DECREF(display);
-	return NULL;
+        Py_DECREF(display);
+        return NULL;
     }
 
     return display;
@@ -68,7 +70,7 @@ static void
 _delete(ImagingDisplayObject* display)
 {
     if (display->dib)
-	ImagingDeleteDIB(display->dib);
+    ImagingDeleteDIB(display->dib);
     PyObject_Del(display);
 }
 
@@ -77,7 +79,7 @@ _expose(ImagingDisplayObject* display, PyObject* args)
 {
     int hdc;
     if (!PyArg_ParseTuple(args, "i", &hdc))
-	return NULL;
+        return NULL;
 
     ImagingExposeDIB(display->dib, hdc);
 
@@ -94,7 +96,7 @@ _draw(ImagingDisplayObject* display, PyObject* args)
     if (!PyArg_ParseTuple(args, "i(iiii)(iiii)", &hdc,
                           dst+0, dst+1, dst+2, dst+3,
                           src+0, src+1, src+2, src+3))
-	return NULL;
+        return NULL;
 
     ImagingDrawDIB(display->dib, hdc, dst, src);
 
@@ -113,15 +115,15 @@ _paste(ImagingDisplayObject* display, PyObject* args)
     int xy[4];
     xy[0] = xy[1] = xy[2] = xy[3] = 0;
     if (!PyArg_ParseTuple(args, "O|(iiii)", &op, xy+0, xy+1, xy+2, xy+3))
-	return NULL;
+        return NULL;
     im = PyImaging_AsImaging(op);
     if (!im)
-	return NULL;
+        return NULL;
 
     if (xy[2] <= xy[0])
-	xy[2] = xy[0] + im->xsize;
+        xy[2] = xy[0] + im->xsize;
     if (xy[3] <= xy[1])
-	xy[3] = xy[1] + im->ysize;
+        xy[3] = xy[1] + im->ysize;
 
     ImagingPasteDIB(display->dib, im, xy);
 
@@ -136,7 +138,7 @@ _query_palette(ImagingDisplayObject* display, PyObject* args)
     int status;
 
     if (!PyArg_ParseTuple(args, "i", &hdc))
-	return NULL;
+        return NULL;
 
     status = ImagingQueryPaletteDIB(display->dib, hdc);
 
@@ -150,7 +152,7 @@ _getdc(ImagingDisplayObject* display, PyObject* args)
     HDC dc;
 
     if (!PyArg_ParseTuple(args, "i", &window))
-	return NULL;
+        return NULL;
 
     dc = GetDC((HWND) window);
     if (!dc) {
@@ -167,7 +169,7 @@ _releasedc(ImagingDisplayObject* display, PyObject* args)
     int window, dc;
 
     if (!PyArg_ParseTuple(args, "ii", &window, &dc))
-	return NULL;
+        return NULL;
 
     ReleaseDC((HWND) window, (HDC) dc);
 
@@ -181,7 +183,7 @@ _fromstring(ImagingDisplayObject* display, PyObject* args)
     char* ptr;
     int bytes;
     if (!PyArg_ParseTuple(args, "s#:fromstring", &ptr, &bytes))
-	return NULL;
+        return NULL;
 
     if (display->dib->ysize * display->dib->linesize != bytes) {
         PyErr_SetString(PyExc_ValueError, "wrong size");
@@ -198,7 +200,7 @@ static PyObject*
 _tostring(ImagingDisplayObject* display, PyObject* args)
 {
     if (!PyArg_ParseTuple(args, ":tostring"))
-	return NULL;
+        return NULL;
 
     return PyString_FromStringAndSize(
         display->dib->bits, display->dib->ysize * display->dib->linesize
@@ -221,50 +223,62 @@ static PyObject*
 _getattr(ImagingDisplayObject* self, char* name)
 {
     PyObject* res;
-
+#ifdef PY3
     res = PyObject_GenericGetAttr((PyObject *)self,
-			PyUnicode_FromString(name));
+                                  PyUnicode_FromString(name));
+#else
+    res = Py_FindMethod(methods, (PyObject*) self, name);
+#endif
     if (res)
-	return res;
+        return res;
     PyErr_Clear();
     if (!strcmp(name, "mode"))
-	return Py_BuildValue("s", self->dib->mode);
+        return Py_BuildValue("s", self->dib->mode);
     if (!strcmp(name, "size"))
-	return Py_BuildValue("ii", self->dib->xsize, self->dib->ysize);
+        return Py_BuildValue("ii", self->dib->xsize, self->dib->ysize);
     PyErr_SetString(PyExc_AttributeError, name);
     return NULL;
 }
 
+
+#ifdef PY3
 static PyTypeObject ImagingDisplayType = {
-	PyVarObject_HEAD_INIT(NULL)
-	"ImagingDisplay",		/*tp_name*/
-	sizeof(ImagingDisplayObject),	/*tp_size*/
-	0,				/*tp_itemsize*/
-	/* methods */
-	(destructor)_delete,		/*tp_dealloc*/
-	0,                          /* tp_print */
-	(getattrfunc)_getattr,      /* tp_getattr*/
-	0,                          /* tp_setattr */
-	0,                          /* tp_compare */
-	0,                          /* tp_repr */
-	0,                          /* tp_as_number */
-	0,                          /* tp_as_sequence */
-	0,                          /* tp_as_mapping */
-	0,                          /* tp_hash */
-	0,                          /* tp_call */
-	0,                          /* tp_str */
-	0,                          /* tp_getattro */
-	0,                          /* tp_setattro */
-	0,                          /* tp_as_buffer */
-	0,                          /* tp_flags */
-	0,                          /* tp_doc */
-	0,                          /* tp_traverse */
-	0,                          /* tp_clear */
-	0,                          /* tp_richcompare */
-	0,                          /* tp_weaklistoffset */
-	0,                          /* tp_iter */
-	0,                          /* tp_iternext */
-	methods,  		            /* tp_methods */
+    PyVarObject_HEAD_INIT(0,0)
+#else
+statichere PyTypeObject ImagingDisplayType = {
+    PyObject_HEAD_INIT(NULL)
+    0,                            /* ob_size */
+#endif
+    "ImagingDisplay",              /*tp_name*/
+    sizeof(ImagingDisplayObject),  /* tp_size */
+    0,                             /* tp_itemsize */
+    /* methods */
+    (destructor)_delete,        /* tp_dealloc */
+    0,                          /* tp_print */
+    (getattrfunc)_getattr,      /* tp_getattr */
+    0,                          /* tp_setattr */
+    0,                          /* tp_compare */
+    0,                          /* tp_repr */
+#ifdef PY3
+    0,                          /* tp_as_number */
+    0,                          /* tp_as_sequence */
+    0,                          /* tp_as_mapping */
+    0,                          /* tp_hash */
+    0,                          /* tp_call */
+    0,                          /* tp_str */
+    0,                          /* tp_getattro */
+    0,                          /* tp_setattro */
+    0,                          /* tp_as_buffer */
+    0,                          /* tp_flags */
+    0,                          /* tp_doc */
+    0,                          /* tp_traverse */
+    0,                          /* tp_clear */
+    0,                          /* tp_richcompare */
+    0,                          /* tp_weaklistoffset */
+    0,                          /* tp_iter */
+    0,                          /* tp_iternext */
+    methods,                    /* tp_methods */
+#endif
 };
 
 PyObject*
@@ -275,11 +289,11 @@ PyImaging_DisplayWin32(PyObject* self, PyObject* args)
     int xsize, ysize;
 
     if (!PyArg_ParseTuple(args, "s(ii)", &mode, &xsize, &ysize))
-	return NULL;
+        return NULL;
 
     display = _new(mode, xsize, ysize);
     if (display == NULL)
-	return NULL;
+        return NULL;
 
     return (PyObject*) display;
 }
@@ -383,7 +397,7 @@ static BOOL CALLBACK list_windows_callback(HWND hwnd, LPARAM lParam)
     GetWindowRect(hwnd, &outer);
 
     item = Py_BuildValue(
-        "lN(iiii)(iiii)", (long) hwnd, title,
+        "nN(iiii)(iiii)", (Py_ssize_t) hwnd, title,
         inner.left, inner.top, inner.right, inner.bottom,
         outer.left, outer.top, outer.right, outer.bottom
         );
@@ -433,7 +447,7 @@ PyImaging_GrabClipboardWin32(PyObject* self, PyObject* args)
     
     int verbose = 0; /* debugging; will be removed in future versions */
     if (!PyArg_ParseTuple(args, "|i", &verbose))
-	return NULL;
+        return NULL;
 
 
     clip = OpenClipboard(NULL);
@@ -513,6 +527,7 @@ PyImaging_GrabClipboardWin32(PyObject* self, PyObject* args)
     if (!handle) {
         /* FIXME: add CF_HDROP support to allow cut-and-paste from
            the explorer */
+        CloseClipboard();
         Py_INCREF(Py_None);
         return Py_None;
     }
@@ -682,7 +697,7 @@ PyImaging_CreateWindowWin32(PyObject* self, PyObject* args)
     PyObject* callback;
     int width = 0, height = 0;
     if (!PyArg_ParseTuple(args, "sO|ii", &title, &callback, &width, &height))
-	return NULL;
+    return NULL;
 
     if (width <= 0)
         width = CW_USEDEFAULT;
@@ -726,7 +741,7 @@ PyImaging_CreateWindowWin32(PyObject* self, PyObject* args)
     SetForegroundWindow(wnd); /* to make sure it's visible */
     Py_END_ALLOW_THREADS
 
-    return Py_BuildValue("l", (long) wnd);
+    return Py_BuildValue("n", (Py_ssize_t) wnd);
 }
 
 PyObject*
@@ -743,6 +758,115 @@ PyImaging_EventLoopWin32(PyObject* self, PyObject* args)
 
     Py_INCREF(Py_None);
     return Py_None;
+}
+
+/* -------------------------------------------------------------------- */
+/* windows WMF renderer */
+
+#define GET32(p,o) ((DWORD*)(p+o))[0]
+
+PyObject *
+PyImaging_DrawWmf(PyObject* self, PyObject* args)
+{
+    HBITMAP bitmap;
+    HENHMETAFILE meta;
+    BITMAPCOREHEADER core;
+    HDC dc;
+    RECT rect;
+    PyObject* buffer = NULL;
+    char* ptr;
+
+    char* data;
+    int datasize;
+    int width, height;
+    int x0, y0, x1, y1;
+#ifdef PY3
+    if (!PyArg_ParseTuple(args, "s#(ii)(iiii):_load", &data, &datasize,
+                          &width, &height, &x0, &x1, &y0, &y1))
+#else
+    if (!PyArg_ParseTuple(args, "y#(ii)(iiii):_load", &data, &datasize,
+                          &width, &height, &x0, &x1, &y0, &y1))
+#endif
+        return NULL;
+
+    /* step 1: copy metafile contents into METAFILE object */
+
+    if (datasize > 22 && GET32(data, 0) == 0x9ac6cdd7) {
+
+        /* placeable windows metafile (22-byte aldus header) */
+        meta = SetWinMetaFileBits(datasize-22, data+22, NULL, NULL);
+
+    } else if (datasize > 80 && GET32(data, 0) == 1 &&
+               GET32(data, 40) == 0x464d4520) {
+
+        /* enhanced metafile */
+        meta = SetEnhMetaFileBits(datasize, data);
+
+    } else {
+
+        /* unknown meta format */
+        meta = NULL;
+
+    }
+
+    if (!meta) {
+        PyErr_SetString(PyExc_IOError, "cannot load metafile");
+        return NULL;
+    }
+
+    /* step 2: create bitmap */
+
+    core.bcSize = sizeof(core);
+    core.bcWidth = width;
+    core.bcHeight = height;
+    core.bcPlanes = 1;
+    core.bcBitCount = 24;
+
+    dc = CreateCompatibleDC(NULL);
+
+    bitmap = CreateDIBSection(
+        dc, (BITMAPINFO*) &core, DIB_RGB_COLORS, &ptr, NULL, 0
+        );
+
+    if (!bitmap) {
+        PyErr_SetString(PyExc_IOError, "cannot create bitmap");
+        goto error;
+    }
+
+    if (!SelectObject(dc, bitmap)) {
+        PyErr_SetString(PyExc_IOError, "cannot select bitmap");
+        goto error;
+    }
+
+    /* step 3: render metafile into bitmap */
+
+    rect.left = rect.top = 0;
+    rect.right = width;
+    rect.bottom = height;
+
+    /* FIXME: make background transparent? configurable? */
+    FillRect(dc, &rect, GetStockObject(WHITE_BRUSH));
+
+    if (!PlayEnhMetaFile(dc, meta, &rect)) {
+        PyErr_SetString(PyExc_IOError, "cannot render metafile");
+        goto error;
+    }
+
+    /* step 4: extract bits from bitmap */
+
+    GdiFlush();
+
+    buffer = PyString_FromStringAndSize(ptr, height * ((width*3 + 3) & -4));
+
+error:
+    DeleteEnhMetaFile(meta);
+
+    if (bitmap)
+        DeleteObject(bitmap);
+
+    DeleteDC(dc);
+
+    return buffer;
 }
 
 #endif /* WIN32 */

@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: ImageWin.py 2662 2006-03-21 22:41:02Z fredrik $
+# $Id$
 #
 # a Windows DIB display interface
 #
@@ -17,7 +17,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image
+from . import Image
 
 ##
 # The <b>ImageWin</b> module contains support to create and display
@@ -157,7 +157,7 @@ class Dib:
     #     data returned from <b>tostring</b>)
 
     def fromstring(self, buffer):
-        return self.image.fromstring(buffer)
+        return self.image.frombuffer(buffer)
 
     ##
     # Copy display memory contents to string buffer.
@@ -165,7 +165,7 @@ class Dib:
     # @return A string buffer containing display data.
 
     def tostring(self):
-        return self.image.tostring()
+        return self.image.tobuffer()
 
 
 ##

@@ -1,7 +1,7 @@
 #! /usr/local/bin/python
 #
 # The Python Imaging Library.
-# $Id: pilconvert.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # convert image files
 #
@@ -13,10 +13,9 @@
 # 0.5   98-12-30 fl     Fixed -f option (from Anthony Baxter)
 #
 
-import sys
-import getopt
+import getopt, sys
 
-import Image
+from PIL import Image
 
 def usage():
     print("PIL Convert 0.5/1998-12-30 -- convert image files")

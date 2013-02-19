@@ -1,5 +1,5 @@
 # The Python Imaging Library.
-# $Id: WalImageFile.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # WAL file handling
 #
@@ -19,7 +19,7 @@
 #    http://www.flipcode.com/tutorials/tut_q2levels.shtml
 # and has been tested with a few sample files found using google.
 
-import Image
+from . import Image
 
 def i32(c, o=0):
     return c[o] + (c[o+1] << 8) + (c[o+2] << 16) + (c[o+3] << 24)
@@ -51,7 +51,7 @@ def open(filename):
     # load pixel data
     fp.seek(offset)
 
-    im = Image.fromstring("P", size, fp.read(size[0] * size[1]))
+    im = Image.frombuffer("P", size, fp.read(size[0] * size[1]))
     im.putpalette(quake2palette)
 
     im.format = "WAL"
@@ -67,7 +67,7 @@ def open(filename):
 
 
 quake2palette = (
-    # default palette taken from piffo 0.93 by Hans Häggström
+    # default palette taken from piffo 0.93 by Hans Haggstrom
     b"\x01\x01\x01\x0b\x0b\x0b\x12\x12\x12\x17\x17\x17\x1b\x1b\x1b\x1e"
     b"\x1e\x1e\x22\x22\x22\x26\x26\x26\x29\x29\x29\x2c\x2c\x2c\x2f\x2f"
     b"\x2f\x32\x32\x32\x35\x35\x35\x37\x37\x37\x3a\x3a\x3a\x3c\x3c\x3c"
@@ -119,7 +119,6 @@ quake2palette = (
 )
 
 if __name__ == "__main__":
-    #im = open("../hacks/sample.wal")
-    #print(im.info, im.mode, im.size)
-    #im.save("../out.png")
-    pass
+    im = open("../hacks/sample.wal")
+    print(im.info, im.mode, im.size)
+    im.save("../out.png")

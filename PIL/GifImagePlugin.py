@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: GifImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # GIF file handling
 #
@@ -28,7 +28,7 @@
 __version__ = "0.9"
 
 
-import Image, ImageFile, ImagePalette
+from . import Image, ImageFile, ImagePalette
 
 
 # --------------------------------------------------------------------
@@ -60,7 +60,7 @@ class GifImageFile(ImageFile.ImageFile):
 
     def data(self):
         s = self.fp.read(1)
-        if s:
+        if s and s[0]:
             return self.fp.read(s[0])
         return None
 
@@ -87,7 +87,7 @@ class GifImageFile(ImageFile.ImageFile):
             # check if palette contains colour indices
             p = self.fp.read(3<<bits)
             for i in range(0, len(p), 3):
-                if not (chr(i//3) == p[i] == p[i+1] == p[i+2]):
+                if not (i//3 == p[i] == p[i+1] == p[i+2]):
                     p = ImagePalette.raw("RGB", p)
                     self.global_palette = self.palette = p
                     break
@@ -162,7 +162,9 @@ class GifImageFile(ImageFile.ImageFile):
                     #
                     self.info["extension"] = block, self.fp.tell()
                     if block[:11] == "NETSCAPE2.0":
-                        self.info["loop"] = 1 # FIXME
+                        block = self.data()
+                        if len(block) >= 3 and block[0] == 1:
+                            self.info["loop"] = i16(block[1:3])
                 while self.data():
                     pass
 
@@ -195,7 +197,7 @@ class GifImageFile(ImageFile.ImageFile):
 
             else:
                 pass
-                # raise IOError, "illegal GIF tag `%x`" % s
+                # raise IOError("illegal GIF tag `%x`" % s)
 
         if not self.tile:
             # self.__fp = None
@@ -270,13 +272,13 @@ def _save(im, fp, filename):
         pass
     else:
         # transparency extension block
-        fp.write("!" +
-                 chr(249) +             # extension intro
-                 chr(4) +               # length
-                 chr(1) +               # transparency info present
-                 o16(0) +               # duration
-                 chr(int(transparency)) # transparency index
-                 + chr(0))
+        fp.write(b"!" +
+                 bytes((249,               # extension intro
+                 4,                        # length
+                 1)) +                     # transparency info present
+                 o16(0) +                  # duration
+                 bytes((int(transparency), # transparency index
+                 0)))
 
     # local image header
     fp.write(b"," +
@@ -350,7 +352,7 @@ def getheader(im, info=None):
     else:
         # greyscale
         for i in range(maxcolor):
-            s.append(chr(i) * 3)
+            s.append(bytes((i, i, i)))
 
     return s
 

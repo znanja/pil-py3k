@@ -1,12 +1,11 @@
 /*
  * The Python Imaging Library.
- * $Id: _imagingtk.c 1756 2004-03-28 17:15:33Z fredrik $
  *
  * tkinter hooks
  *
  * history:
- * 99-07-26 fl	created
- * 99-08-15 fl	moved to its own support module
+ * 99-07-26 fl    created
+ * 99-08-15 fl    moved to its own support module
  *
  * Copyright (c) Secret Labs AB 1999.
  *
@@ -18,6 +17,8 @@
 #include "Imaging.h"
 
 #include "tk.h"
+
+#include "py3.h"
 
 /* must link with Tk/tkImaging.c */
 extern void TkImaging_Init(Tcl_Interp* interp);
@@ -31,7 +32,7 @@ typedef struct {
     Tcl_Interp* interp;
 } TkappObject;
 
-static PyObject* 
+static PyObject*
 _tkinit(PyObject* self, PyObject* args)
 {
     Tcl_Interp* interp;
@@ -45,8 +46,8 @@ _tkinit(PyObject* self, PyObject* args)
         interp = (Tcl_Interp*) arg;
     else {
         TkappObject* app;
-	/* Do it the hard way.  This will break if the TkappObject
-	   layout changes */
+    /* Do it the hard way.  This will break if the TkappObject
+       layout changes */
         app = (TkappObject*) arg;
         interp = app->interp;
     }
@@ -64,16 +65,29 @@ static PyMethodDef functions[] = {
     {NULL, NULL} /* sentinel */
 };
 
+
+#ifdef PY3
+
 static struct PyModuleDef _imagingtk_module = {
-	PyModuleDef_HEAD_INIT,	/* m_base */
-	"_imagingtk",			/* m_name */
-	NULL,					/* m_doc */
-	-1,						/* m_size */
-	functions,				/* m_methods */
+    PyModuleDef_HEAD_INIT, /* m_base */
+    "_imagingtk",          /* m_name */
+    NULL,                  /* m_doc */
+    -1,                    /* m_size */
+    functions,             /* m_methods */
 };
 
 PyMODINIT_FUNC
 PyInit__imagingtk(void)
 {
-	return PyModule_Create(&_imagingtk_module);
+    return PyModule_Create(&_imagingtk_module);
 }
+
+#else
+
+DL_EXPORT(void)
+init_imagingtk(void)
+{
+    Py_InitModule("_imagingtk", functions);
+}
+
+#endif

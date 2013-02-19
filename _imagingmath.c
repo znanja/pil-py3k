@@ -1,6 +1,5 @@
 /*
  * The Python Imaging Library
- * $Id: _imagingmath.c 2396 2005-05-07 09:17:22Z Fredrik $
  *
  * a simple math add-on for the Python Imaging Library
  *
@@ -20,6 +19,18 @@
 
 #include "math.h"
 #include "float.h"
+
+#include "py3.h"
+
+#define MAX_INT32 2147483647.0
+#define MIN_INT32 -2147483648.0
+
+#if defined(_MSC_VER) && _MSC_VER < 1500
+/* python 2.1/2.2/2.3 = VC98 = VER 1200 */
+/* python 2.4/2.5 = VS.NET 2003 = VER 1310 */
+/* python 2.6 = VS 9.0 = VER 1500 */
+#define powf(a, b) ((float) pow((double) (a), (double) (b)))
+#endif
 
 #define UNOP(name, op, type)\
 void name(Imaging out, Imaging im1)\
@@ -83,6 +94,21 @@ void name(Imaging out, Imaging im1, Imaging im2)\
 #define MOD_I(type, v1, v2) ((v2)!=0)?(v1)%(v2):0
 #define MOD_F(type, v1, v2) ((v2)!=0.0F)?fmod((v1),(v2)):0.0F
 
+static int powi(int x, int y)
+{
+    double v = pow(x, y) + 0.5;
+    if (errno == EDOM)
+        return 0;
+    if (v < MIN_INT32)
+        v = MIN_INT32;
+    else if (v > MAX_INT32)
+        v = MAX_INT32;
+    return (int) v;
+}
+
+#define POW_I(type, v1, v2) powi(v1, v2)
+#define POW_F(type, v1, v2) powf(v1, v2) /* FIXME: EDOM handling */
+
 #define DIFF_I(type, v1, v2) abs((v1)-(v2))
 #define DIFF_F(type, v1, v2) fabs((v1)-(v2))
 
@@ -101,6 +127,7 @@ BINOP(sub_I, SUB, INT32)
 BINOP(mul_I, MUL, INT32)
 BINOP(div_I, DIV_I, INT32)
 BINOP(mod_I, MOD_I, INT32)
+BINOP(pow_I, POW_I, INT32)
 BINOP(diff_I, DIFF_I, INT32)
 
 UNOP(invert_I, INVERT, INT32)
@@ -128,6 +155,7 @@ BINOP(sub_F, SUB, FLOAT32)
 BINOP(mul_F, MUL, FLOAT32)
 BINOP(div_F, DIV_F, FLOAT32)
 BINOP(mod_F, MOD_F, FLOAT32)
+BINOP(pow_F, POW_F, FLOAT32)
 BINOP(diff_F, DIFF_F, FLOAT32)
 
 BINOP(min_F, MIN, FLOAT32)
@@ -147,8 +175,8 @@ _unop(PyObject* self, PyObject* args)
     Imaging im1;
     void (*unop)(Imaging, Imaging);
 
-    long op, i0, i1;
-    if (!PyArg_ParseTuple(args, "lll", &op, &i0, &i1))
+    Py_ssize_t op, i0, i1;
+    if (!PyArg_ParseTuple(args, "nnn", &op, &i0, &i1))
         return NULL;
 
     out = (Imaging) i0;
@@ -170,8 +198,8 @@ _binop(PyObject* self, PyObject* args)
     Imaging im2;
     void (*binop)(Imaging, Imaging, Imaging);
 
-    long op, i0, i1, i2;
-    if (!PyArg_ParseTuple(args, "llll", &op, &i0, &i1, &i2))
+    Py_ssize_t op, i0, i1, i2;
+    if (!PyArg_ParseTuple(args, "nnnn", &op, &i0, &i1, &i2))
         return NULL;
 
     out = (Imaging) i0;
@@ -195,18 +223,20 @@ static PyMethodDef _functions[] = {
 static void
 install(PyObject *d, char* name, void* value)
 {
-    PyObject *v = PyLong_FromLong((long) value);
+    PyObject *v = PyInt_FromSsize_t((Py_ssize_t) value);
     if (!v || PyDict_SetItemString(d, name, v))
         PyErr_Clear();
     Py_XDECREF(v);
 }
 
+#ifdef PY3
+
 static struct PyModuleDef _imagingmath_module = {
-	PyModuleDef_HEAD_INIT,	/* m_base */
-	"_imagingmath",			/* m_name */
-	NULL,					/* m_doc */
-	-1,						/* m_size */
-	_functions,				/* m_methods */
+    PyModuleDef_HEAD_INIT, /* m_base */
+    "_imagingmath",        /* m_name */
+    NULL,                  /* m_doc */
+    -1,                    /* m_size */
+    _functions,            /* m_methods */
 };
 
 PyMODINIT_FUNC
@@ -218,6 +248,17 @@ PyInit__imagingmath(void)
     m = PyModule_Create(&_imagingmath_module);
     d = PyModule_GetDict(m);
 
+#else 
+
+DL_EXPORT(void)
+init_imagingmath(void)
+{
+
+    m = Py_InitModule("_imagingmath", _functions);
+    d = PyModule_GetDict(m);
+
+#endif
+
     install(d, "abs_I", abs_I);
     install(d, "neg_I", neg_I);
     install(d, "add_I", add_I);
@@ -228,6 +269,7 @@ PyInit__imagingmath(void)
     install(d, "mod_I", mod_I);
     install(d, "min_I", min_I);
     install(d, "max_I", max_I);
+    install(d, "pow_I", pow_I);
 
     install(d, "invert_I", invert_I);
     install(d, "and_I", and_I);
@@ -253,6 +295,7 @@ PyInit__imagingmath(void)
     install(d, "mod_F", mod_F);
     install(d, "min_F", min_F);
     install(d, "max_F", max_F);
+    install(d, "pow_F", pow_F);
 
     install(d, "eq_F", eq_F);
     install(d, "ne_F", ne_F);
@@ -261,5 +304,7 @@ PyInit__imagingmath(void)
     install(d, "gt_F", gt_F);
     install(d, "ge_F", ge_F);
 
-	return m;
+#ifdef PY3
+    return m;
+#endif
 }

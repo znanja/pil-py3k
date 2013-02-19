@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library
-# $Id: ImagePath.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # path interface
 #
@@ -14,7 +14,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image
+from . import Image
 
 ##
 # Path wrapper.

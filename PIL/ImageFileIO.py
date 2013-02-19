@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: ImageFileIO.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # kludge to get basic ImageFileIO functionality
 #
@@ -12,7 +12,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-from io import StringIO
+from io import BytesIO
 
 ##
 # The <b>ImageFileIO</b> module can be used to read an image from a
@@ -23,7 +23,7 @@ from io import StringIO
 #
 # @see ImageFile#Parser
 
-class ImageFileIO(StringIO):
+class ImageFileIO(BytesIO):
 
     ##
     # Adds buffering to a stream file object, in order to
@@ -36,12 +36,4 @@ class ImageFileIO(StringIO):
 
     def __init__(self, fp):
         data = fp.read()
-        StringIO.__init__(self, data)
-
-if __name__ == "__main__":
-
-    import Image
-    fp = open("/images/clenna.im", "rb")
-    im = Image.open(ImageFileIO(fp))
-    im.load() # make sure we can read the raster data
-    print(im.mode, im.size)
+        BytesIO.__init__(self, data)

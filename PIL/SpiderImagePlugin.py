@@ -33,7 +33,7 @@
 # http://www.wadsworth.org/spider_doc/spider/docs/image_doc.html
 #
 
-import Image, ImageFile
+from . import Image, ImageFile
 import os, struct, sys
 
 def isInt(f):
@@ -171,7 +171,7 @@ class SpiderImageFile(ImageFile.ImageFile):
 
     # returns a ImageTk.PhotoImage object, after rescaling to 0..255
     def tkPhotoImage(self):
-        import ImageTk
+        from . import ImageTk
         return ImageTk.PhotoImage(self.convert2byte(), palette=256)
 
 # --------------------------------------------------------------------

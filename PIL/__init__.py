@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: __init__.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # package placeholder
 #
@@ -10,3 +10,8 @@
 #
 
 # ;-)
+
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))

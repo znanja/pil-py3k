@@ -1,6 +1,6 @@
 #
 # Python Imaging Library
-# $Id: PaletteFile.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # stuff to read simple, teragon-style palette files
 #
@@ -22,7 +22,7 @@ class PaletteFile:
 
     def __init__(self, fp):
 
-        self.palette = [(i, i, i) for i in list(range(256))]
+        self.palette = [(i, i, i) for i in range(256)]
 
         while 1:
 
@@ -30,6 +30,10 @@ class PaletteFile:
 
             if not s:
                 break
+
+            if s.startswith(b"#"):
+                continue
+
             if len(s) > 100:
                 raise SyntaxError("bad palette file")
 

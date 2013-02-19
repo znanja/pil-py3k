@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: XVThumbImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # XV Thumbnail file handler by Charles E. "Gene" Cash
 # (gcash@magicnet.net)
@@ -19,7 +19,7 @@
 
 __version__ = "0.1"
 
-import Image, ImageFile, ImagePalette
+from . import Image, ImageFile, ImagePalette
 
 # standard color palette for thumbnails (RGB332)
 PALETTE = b""

@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: FliImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # FLI/FLC file handling.
 #
@@ -18,7 +18,8 @@
 
 __version__ = "0.2"
 
-import Image, ImageFile, ImagePalette
+from . import Image, ImageFile, ImagePalette
+import string
 
 
 def i16(c):
@@ -47,7 +48,9 @@ class FliImageFile(ImageFile.ImageFile):
         # HEAD
         s = self.fp.read(128)
         magic = i16(s[4:6])
-        if magic not in [0xAF11, 0xAF12]:
+        if not (magic in [0xAF11, 0xAF12] and
+                i16(s[14:16]) in [0, 3] and  # flags
+                s[20:22] == b'\x00\x00'):  # reserved
             raise SyntaxError("not an FLI/FLC file")
 
         # image characteristics

@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 #
 # Setup script for PIL 1.1.5 and later
-# $Id: setup.py 2582 2005-11-11 21:54:00Z fredrik $
 #
 # Usage: python setup.py install
 #
 
-import glob, os, re, struct, sys
+import glob, os, re, struct, string, sys
 
 # make it possible to run the setup script from another directory
 try:
@@ -34,11 +33,24 @@ def libinclude(root):
 #
 # TIFF_ROOT = libinclude("/opt/tiff")
 
-FREETYPE_ROOT = None
-JPEG_ROOT = None
-TIFF_ROOT = None
-ZLIB_ROOT = None
-TCL_ROOT = None
+try:
+    from _inclib import INCLIB, TCL_INC, TCL_LIB
+    TCL_ROOT = TCL_LIB, TCL_INC
+    JPEG_ROOT = INCLIB
+    ZLIB_ROOT = INCLIB
+    TIFF_ROOT = INCLIB
+    FREETYPE_ROOT = INCLIB
+    LCMS_ROOT = INCLIB
+    HAVE_LIBTIFF = True
+except ImportError:
+    TCL_ROOT = None
+    JPEG_ROOT = None
+    ZLIB_ROOT = None
+    TIFF_ROOT = None
+    FREETYPE_ROOT = None
+    LCMS_ROOT = None
+    HAVE_LIBTIFF = False
+
 
 # FIXME: add mechanism to explicitly *disable* the use of a library
 
@@ -46,9 +58,10 @@ TCL_ROOT = None
 # Identification
 
 NAME = "PIL"
-DESCRIPTION = "Python Imaging Library"
+DESCRIPTION = "Python 3 Imaging Library (fork)"
 AUTHOR = "Secret Labs AB (PythonWare)", "info@pythonware.com"
 HOMEPAGE = "http://www.pythonware.com/products/pil"
+DOWNLOAD_URL = "http://effbot.org/downloads/%s-%s.tar.gz" # name, version
 
 # --------------------------------------------------------------------
 # Core library
@@ -67,9 +80,12 @@ LIBIMAGING = [
     "PackDecode", "Palette", "Paste", "Quant", "QuantHash",
     "QuantHeap", "PcdDecode", "PcxDecode", "PcxEncode", "Point",
     "RankFilter", "RawDecode", "RawEncode", "Storage", "SunRleDecode",
-    "TgaRleDecode", "Unpack", "UnpackYCC", "XbmDecode", "XbmEncode",
-    "ZipDecode", "ZipEncode"
+    "TgaRleDecode", "Unpack", "UnpackYCC", "UnsharpMask", "XbmDecode",
+    "XbmEncode", "ZipDecode", "ZipEncode", "TiffDecode"
     ]
+
+if not HAVE_LIBTIFF:
+    LIBIMAGING = LIBIMAGING[:-1]
 
 # --------------------------------------------------------------------
 # Override settings
@@ -97,12 +113,18 @@ def add_directory(path, dir, where=None):
         else:
             path.insert(where, dir)
 
+def find_include_file(self, include):
+    for directory in self.compiler.include_dirs:
+        if os.path.isfile(os.path.join(directory, include)):
+            return 1
+    return 0
+
 def find_library_file(self, library):
     return self.compiler.find_library_file(self.compiler.library_dirs, library)
 
 def find_version(filename):
     for line in open(filename).readlines():
-        m = re.search("VERSION\s*=\s*\"([^\"]+)\"", line)
+        m = re.search("__version__\s*=\s*\"([^\"]+)\"", line)
         if m:
             return m.group(1)
     return None
@@ -139,7 +161,7 @@ class pil_build_ext(build_ext):
             # darwin ports installation directories
             add_directory(library_dirs, "/opt/local/lib")
             add_directory(include_dirs, "/opt/local/include")
-            
+
         # SmartOS
         elif os.uname()[0] == "SunOS" and os.uname()[3][:6] == "joyent":
             add_directory(library_dirs, "/opt/local/lib")
@@ -187,7 +209,8 @@ class pil_build_ext(build_ext):
         #
         # add configured kits
 
-        for root in [FREETYPE_ROOT, JPEG_ROOT, TCL_ROOT, TIFF_ROOT, ZLIB_ROOT]:
+        for root in (TCL_ROOT, JPEG_ROOT, TCL_ROOT, TIFF_ROOT, ZLIB_ROOT,
+                     FREETYPE_ROOT, LCMS_ROOT):
             if isinstance(root, type(())):
                 lib_root, include_root = root
             else:
@@ -198,14 +221,18 @@ class pil_build_ext(build_ext):
         #
         # add standard directories
 
+        # look for tcl specific subdirectory (e.g debian)
+        if _tkinter:
+            tcl_dir = "/usr/include/tcl" + TCL_VERSION
+            if os.path.isfile(os.path.join(tcl_dir, "tk.h")):
+                add_directory(include_dirs, tcl_dir)
+
+        # standard locations
         add_directory(library_dirs, "/usr/local/lib")
         add_directory(include_dirs, "/usr/local/include")
 
         add_directory(library_dirs, "/usr/lib")
         add_directory(include_dirs, "/usr/include")
-
-        # XXX
-        add_directory(include_dirs, "/usr/include/tcl8.5")
 
         #
         # insert new dirs *before* default libs, to avoid conflicts
@@ -218,21 +245,27 @@ class pil_build_ext(build_ext):
         # look for available libraries
 
         class feature:
-            zlib = jpeg = tiff = freetype = tcl = tk = None
+            zlib = jpeg = tiff = freetype = tcl = tk = lcms = None
         feature = feature()
 
-        if find_library_file(self, "z"):
-            feature.zlib = "z"
-        elif sys.platform == "win32" and find_library_file(self, "zlib"):
-            feature.zlib = "zlib" # alternative name
+        if find_include_file(self, "zlib.h"):
+            if find_library_file(self, "z"):
+                feature.zlib = "z"
+            elif sys.platform == "win32" and find_library_file(self, "zlib"):
+                feature.zlib = "zlib" # alternative name
 
-        if find_library_file(self, "jpeg"):
-            feature.jpeg = "jpeg"
-        elif sys.platform == "win32" and find_library_file(self, "libjpeg"):
-            feature.jpeg = "libjpeg" # alternative name
+        if find_include_file(self, "jpeglib.h"):
+            if find_library_file(self, "jpeg"):
+                feature.jpeg = "jpeg"
+            elif sys.platform == "win32" and find_library_file(self, "libjpeg"):
+                feature.jpeg = "libjpeg" # alternative name
 
         if find_library_file(self, "tiff"):
             feature.tiff = "tiff"
+        if sys.platform == "win32" and find_library_file(self, "libtiff"):
+            feature.tiff = "libtiff"
+        if sys.platform == "darwin" and find_library_file(self, "libtiff"):
+            feature.tiff = "libtiff"
 
         if find_library_file(self, "freetype"):
             # look for freetype2 include files
@@ -255,7 +288,11 @@ class pil_build_ext(build_ext):
                 if dir:
                     add_directory(self.compiler.include_dirs, dir, 0)
 
-        if _tkinter:
+        if find_include_file(self, "lcms.h"):
+            if find_library_file(self, "lcms"):
+                feature.lcms = "lcms"
+
+        if _tkinter and find_include_file(self, "tk.h"):
             # the library names may vary somewhat (e.g. tcl84 or tcl8.4)
             version = TCL_VERSION[0] + TCL_VERSION[2]
             if find_library_file(self, "tcl" + version):
@@ -284,13 +321,16 @@ class pil_build_ext(build_ext):
         if feature.zlib:
             libs.append(feature.zlib)
             defs.append(("HAVE_LIBZ", None))
+        if feature.tiff and HAVE_LIBTIFF:
+            libs.append(feature.tiff)
+            defs.append(("HAVE_LIBTIFF", None))
         if sys.platform == "win32":
             libs.extend(["kernel32", "user32", "gdi32"])
         if struct.unpack("h", b"\0\1")[0] == 1:
             defs.append(("WORDS_BIGENDIAN", None))
 
         exts = [(Extension(
-            "_imaging", files, libraries=libs, define_macros=defs
+            "PIL._imaging", files, libraries=libs, define_macros=defs
             ))]
 
         #
@@ -301,13 +341,21 @@ class pil_build_ext(build_ext):
             if feature.freetype_version == 20:
                 defs.append(("USE_FREETYPE_2_0", None))
             exts.append(Extension(
-                "_imagingft", ["_imagingft.c"], libraries=["freetype"],
+                "PIL._imagingft", ["_imagingft.c"], libraries=["freetype"],
                 define_macros=defs
                 ))
 
         if os.path.isfile("_imagingtiff.c") and feature.tiff:
             exts.append(Extension(
-                "_imagingtiff", ["_imagingtiff.c"], libraries=["tiff"]
+                "PIL._imagingtiff", ["_imagingtiff.c"], libraries=["tiff"]
+                ))
+
+        if os.path.isfile("_imagingcms.c") and feature.lcms:
+            extra = []
+            if sys.platform == "win32":
+                extra.extend(["user32", "gdi32"])
+            exts.append(Extension(
+                "PIL._imagingcms", ["_imagingcms.c"], libraries=["lcms"] + extra
                 ))
 
         if sys.platform == "darwin":
@@ -329,18 +377,18 @@ class pil_build_ext(build_ext):
                     break
             if frameworks:
                 exts.append(Extension(
-                    "_imagingtk", ["_imagingtk.c", "Tk/tkImaging.c"],
+                    "PIL._imagingtk", ["_imagingtk.c", "Tk/tkImaging.c"],
                     extra_compile_args=frameworks, extra_link_args=frameworks
                     ))
                 feature.tcl = feature.tk = 1 # mark as present
         elif feature.tcl and feature.tk:
             exts.append(Extension(
-                "_imagingtk", ["_imagingtk.c", "Tk/tkImaging.c"],
+                "PIL._imagingtk", ["_imagingtk.c", "Tk/tkImaging.c"],
                 libraries=[feature.tcl, feature.tk]
                 ))
 
         if os.path.isfile("_imagingmath.c"):
-            exts.append(Extension("_imagingmath", ["_imagingmath.c"]))
+            exts.append(Extension("PIL._imagingmath", ["_imagingmath.c"]))
 
         self.extensions[:] = exts
 
@@ -359,7 +407,7 @@ class pil_build_ext(build_ext):
     def summary_report(self, feature, unsafe_zlib):
 
         print("-" * 68)
-        print("PIL", VERSION, "BUILD SUMMARY")
+        print("PIL", VERSION, "SETUP SUMMARY")
         print("-" * 68)
         print("version      ", VERSION)
         v = sys.version.split("[")
@@ -372,14 +420,15 @@ class pil_build_ext(build_ext):
             (feature.tcl and feature.tk, "TKINTER"),
             (feature.jpeg, "JPEG"),
             (feature.zlib, "ZLIB (PNG/ZIP)"),
-            # (feature.tiff, "experimental TIFF G3/G4 read"),
+            (feature.tiff and HAVE_LIBTIFF, "experimental TIFF G3/G4 read"),
             (feature.freetype, "FREETYPE2"),
+            (feature.lcms, "LITTLECMS"),
             ]
 
         all = 1
         for option in options:
             if option[0]:
-                print("---", option[1], "support ok")
+                print("---", option[1], "support available")
             else:
                 print("***", option[1], "support not available", end=' ')
                 if option[1] == "TKINTER" and _tkinter:
@@ -437,7 +486,8 @@ if __name__ == "__main__":
     except:
         pass
 
-    setup(
+    # Basic metadata
+    configuration = dict(
         author=AUTHOR[0], author_email=AUTHOR[1],
         classifiers=[
             "Development Status :: 6 - Mature",
@@ -447,19 +497,28 @@ if __name__ == "__main__":
             "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture",
             "Topic :: Multimedia :: Graphics :: Graphics Conversion",
             "Topic :: Multimedia :: Graphics :: Viewers",
+            "Programming Language :: Python",
+            "Programming Language :: Python :: 3",
             ],
-        cmdclass = {"build_ext": pil_build_ext},
         description=DESCRIPTION,
-        download_url="http://effbot.org/zone/pil-changes-116.htm",
-        ext_modules = [Extension("_imaging", ["_imaging.c"])], # dummy
-        extra_path = "PIL",
+        download_url=DOWNLOAD_URL % (NAME, VERSION),
         license="Python (MIT style)",
         long_description=DESCRIPTION,
         name=NAME,
-        package_dir={"": "PIL"},
-        packages=[""],
-        platforms="Python 1.5.2 and later.",
         scripts = glob.glob("Scripts/pil*.py"),
         url=HOMEPAGE,
-        version=VERSION,
+        version=VERSION
         )
+
+    # Standard configuration for PIL package
+    configuration.update(dict(
+        packages=["PIL"],
+        ))
+
+    # Extensions
+    configuration.update(dict(
+        cmdclass = {"build_ext": pil_build_ext},
+        ext_modules = [Extension("PIL._imaging", ["_imaging.c"])], # dummy
+        ))
+
+    setup(*(), **configuration)  # old school :-)

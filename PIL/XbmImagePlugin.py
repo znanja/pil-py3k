@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: XbmImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # XBM File handling
 #
@@ -22,7 +22,7 @@
 __version__ = "0.6"
 
 import re
-import Image, ImageFile
+from . import Image, ImageFile
 
 # XBM header
 xbm_head = re.compile(

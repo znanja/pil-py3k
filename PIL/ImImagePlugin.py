@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: ImImagePlugin.py 2285 2005-02-07 23:52:14Z fredrik $
+# $Id$
 #
 # IFUNC IM file handling for PIL
 #
@@ -29,7 +29,7 @@
 __version__ = "0.7"
 
 import re
-import Image, ImageFile, ImagePalette
+from . import Image, ImageFile, ImagePalette
 
 
 # --------------------------------------------------------------------
@@ -50,42 +50,42 @@ TAGS = { COMMENT:0, DATE:0, EQUIPMENT:0, FRAMES:0, LUT:0, NAME:0,
 
 OPEN = {
     # ifunc93/p3cfunc formats
-    "0 1 image": ("1", "1"),
-    "L 1 image": ("1", "1"),
-    "Greyscale image": ("L", "L"),
-    "Grayscale image": ("L", "L"),
-    "RGB image": ("RGB", "RGB;L"),
-    "RLB image": ("RGB", "RLB"),
-    "RYB image": ("RGB", "RLB"),
-    "B1 image": ("1", "1"),
-    "B2 image": ("P", "P;2"),
-    "B4 image": ("P", "P;4"),
-    "X 24 image": ("RGB", "RGB"),
-    "L 32 S image": ("I", "I;32"),
-    "L 32 F image": ("F", "F;32"),
+    b"0 1 image": ("1", "1"),
+    b"L 1 image": ("1", "1"),
+    b"Greyscale image": ("L", "L"),
+    b"Grayscale image": ("L", "L"),
+    b"RGB image": ("RGB", "RGB;L"),
+    b"RLB image": ("RGB", "RLB"),
+    b"RYB image": ("RGB", "RLB"),
+    b"B1 image": ("1", "1"),
+    b"B2 image": ("P", "P;2"),
+    b"B4 image": ("P", "P;4"),
+    b"X 24 image": ("RGB", "RGB"),
+    b"L 32 S image": ("I", "I;32"),
+    b"L 32 F image": ("F", "F;32"),
     # old p3cfunc formats
-    "RGB3 image": ("RGB", "RGB;T"),
-    "RYB3 image": ("RGB", "RYB;T"),
+    b"RGB3 image": ("RGB", "RGB;T"),
+    b"RYB3 image": ("RGB", "RYB;T"),
     # extensions
-    "LA image": ("LA", "LA;L"),
-    "RGBA image": ("RGBA", "RGBA;L"),
-    "RGBX image": ("RGBX", "RGBX;L"),
-    "CMYK image": ("CMYK", "CMYK;L"),
-    "YCC image": ("YCbCr", "YCbCr;L"),
+    b"LA image": ("LA", "LA;L"),
+    b"RGBA image": ("RGBA", "RGBA;L"),
+    b"RGBX image": ("RGBX", "RGBX;L"),
+    b"CMYK image": ("CMYK", "CMYK;L"),
+    b"YCC image": ("YCbCr", "YCbCr;L"),
 }
 
 # ifunc95 extensions
 for i in ["8", "8S", "16", "16S", "32", "32F"]:
-    OPEN["L %s image" % i] = ("F", "F;%s" % i)
-    OPEN["L*%s image" % i] = ("F", "F;%s" % i)
-for i in ["16", "16B"]:
-    OPEN["L %s image" % i] = ("I;%s" % i, "I;%s" % i)
-    OPEN["L*%s image" % i] = ("I;%s" % i, "I;%s" % i)
+    OPEN[bytes("L %s image" % i, 'ascii')] = ("F", "F;%s" % i)
+    OPEN[bytes("L*%s image" % i, 'ascii')] = ("F", "F;%s" % i)
+for i in ["16", "16L", "16B"]:
+    OPEN[bytes("L %s image" % i, 'ascii')] = ("I;%s" % i, "I;%s" % i)
+    OPEN[bytes("L*%s image" % i, 'ascii')] = ("I;%s" % i, "I;%s" % i)
 for i in ["32S"]:
-    OPEN["L %s image" % i] = ("I", "I;%s" % i)
-    OPEN["L*%s image" % i] = ("I", "I;%s" % i)
+    OPEN[bytes("L %s image" % i, 'ascii')] = ("I", "I;%s" % i)
+    OPEN[bytes("L*%s image" % i, 'ascii')] = ("I", "I;%s" % i)
 for i in range(2, 33):
-    OPEN["L*%s image" % i] = ("F", "F;%s" % i)
+    OPEN[bytes("L*%s image" % i, 'ascii')] = ("F", "F;%s" % i)
 
 
 # --------------------------------------------------------------------
@@ -133,7 +133,7 @@ class ImImageFile(ImageFile.ImageFile):
             if s == b"\r":
                 continue
 
-            if not s or s[0] == 0 or s[0] == 26:
+            if not s or (s[0] == 0) or (s[0] == 26):
                 break
 
             # FIXME: this may read whole file if not a text file
@@ -162,10 +162,8 @@ class ImImageFile(ImageFile.ImageFile):
                     v = tuple(map(number, v.split(b",")))
                     if len(v) == 1:
                         v = v[0]
-                elif k == MODE:
-                    v = v.decode('ascii')
-                    if v in OPEN:
-                        v, self.rawmode = OPEN[v]
+                elif (k == MODE) and (v in OPEN):
+                    v, self.rawmode = OPEN[v]
 
                 # Add to dictionary. Note that COMMENT tags are
                 # combined into a list of strings.
@@ -192,7 +190,7 @@ class ImImageFile(ImageFile.ImageFile):
         self.mode = self.info[MODE]
 
         # Skip forward to start of image data
-        while s and s[0] != 26:
+        while s and (s[0] != 26):
             s = self.fp.read(1)
         if not s:
             raise SyntaxError("File truncated")
@@ -211,7 +209,8 @@ class ImImageFile(ImageFile.ImageFile):
             if self.mode == "L" or self.mode == "LA":
                 if greyscale:
                     if not linear:
-                        self.lut = list(map(ord, palette[:256]))
+                        #self.lut = list(map(ord, palette[:256]))
+                        self.lut = list(palette[:256])
                 else:
                     if self.mode == "L":
                         self.mode = self.rawmode = "P"
@@ -220,7 +219,8 @@ class ImImageFile(ImageFile.ImageFile):
                     self.palette = ImagePalette.raw("RGB;L", palette)
             elif self.mode == "RGB":
                 if not greyscale or not linear:
-                    self.lut = list(map(ord, palette))
+                    #self.lut = list(map(ord, palette))
+                    self.lut = list(palette)
 
         self.frame = 0
 
@@ -291,6 +291,7 @@ SAVE = {
     "PA": ("LA", "PA;L"),
     "I": ("L 32S", "I;32S"),
     "I;16": ("L 16", "I;16"),
+    "I;16L": ("L 16L", "I;16L"),
     "I;16B": ("L 16B", "I;16B"),
     "F": ("L 32F", "F;32F"),
     "RGB": ("RGB", "RGB;L"),

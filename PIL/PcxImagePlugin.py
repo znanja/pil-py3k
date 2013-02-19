@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: PcxImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # PCX file handling
 #
@@ -27,7 +27,7 @@
 
 __version__ = "0.6"
 
-import Image, ImageFile, ImagePalette
+from . import Image, ImageFile, ImagePalette
 
 def i16(c,o):
     return c[o] + (c[o+1] << 8)

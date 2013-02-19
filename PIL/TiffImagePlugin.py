@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: TiffImagePlugin.py 2803 2006-07-31 19:18:57Z fredrik $
+# $Id$
 #
 # TIFF file handling
 #
@@ -15,12 +15,6 @@
 #
 # History:
 # 1995-09-01 fl   Created
-# 1996-05-04 fl   Handle JPEGTABLES tag
-# 1996-05-18 fl   Fixed COLORMAP support
-# 1997-01-05 fl   Fixed PREDICTOR support
-# 1997-08-27 fl   Added support for rational tags (from Perry Stoll)
-# 1998-01-10 fl   Fixed seek/tell (from Jan Blom)
-# 1998-07-15 fl   Use private names for internal variables
 # 1999-06-13 fl   Rewritten for PIL 1.0 (1.0)
 # 2000-10-11 fl   Additional fixes for Python 2.0 (1.1)
 # 2001-04-17 fl   Fixed rewind support (seek to frame 0) (1.2)
@@ -32,30 +26,39 @@
 # 2004-02-24 fl   Added DPI support; fixed rational write support
 # 2005-02-07 fl   Added workaround for broken Corel Draw 10 files
 # 2006-01-09 fl   Added support for float/double tags (from Russell Nelson)
+# 2009-03-06 fl   Added ICC support (from Florian Hoech)
+# 2009-03-08 fl   Added big endian save, etc (from Sebastian Haase)
+# 2010-04-25 fl   Added limited support for 16-bit RGB (1.3.6)
 #
-# Copyright (c) 1997-2006 by Secret Labs AB.  All rights reserved.
+# Copyright (c) 1997-2010 by Secret Labs AB.  All rights reserved.
 # Copyright (c) 1995-1997 by Fredrik Lundh
 #
 # See the README file for information on usage and redistribution.
 #
 
-__version__ = "1.3.5"
-
-import Image, ImageFile
-import ImagePalette
+__version__ = "1.3.6"
 
 import array, sys
 
+
+from . import Image
+from . import ImageFile
+from . import ImagePalette
+
+
+II = b"II" # little-endian (intel-style)
+MM = b"MM" # big-endian (motorola-style)
+
 try:
     if sys.byteorder == "little":
-        byteorder = b"II"
+        native_prefix = II
     else:
-        byteorder = b"MM"
+        native_prefix = MM
 except AttributeError:
     if ord(array.array("i",[1]).tostring()[0]):
-        byteorder = b"II"
+        native_prefix = II
     else:
-        byteorder = b"MM"
+        native_prefix = MM
 
 #
 # --------------------------------------------------------------------
@@ -66,14 +69,18 @@ def il16(c,o=0):
 def il32(c,o=0):
     return c[o] + (c[o+1] << 8) + (c[o+2] << 16) + (c[o+3] << 24)
 def ol16(i):
-    return bytes((i&255, i>>8&255))
+    return bytes((i&255, i >> 8&255))
 def ol32(i):
-    return bytes((i&255, i>>8&255, i>>16&255, i>>24&255))
+    return bytes((i&255, i >> 8&255, i >> 16&255, i >> 24&255))
 
 def ib16(c,o=0):
     return c[o+1] + (c[o] << 8)
 def ib32(c,o=0):
     return c[o+3] + (c[o+2] << 8) + (c[o+1] << 16) + (c[o] << 24)
+def ob16(i):
+    return bytes((i >> 8&255, i&255))
+def ob32(i):
+    return bytes((i >> 24&255, i >> 16&255, i >> 8&255, i&255))
 
 # a few tag names, just to make the code below a bit more readable
 IMAGEWIDTH = 256
@@ -96,12 +103,16 @@ DATE_TIME = 306
 ARTIST = 315
 PREDICTOR = 317
 COLORMAP = 320
+TILEOFFSETS = 324
 EXTRASAMPLES = 338
 SAMPLEFORMAT = 339
 JPEGTABLES = 347
 COPYRIGHT = 33432
 IPTC_NAA_CHUNK = 33723 # newsphoto properties
 PHOTOSHOP_CHUNK = 34377 # photoshop properties
+ICCPROFILE = 34675
+EXIFIFD = 34665
+XMP = 700
 
 COMPRESSION_INFO = {
     # Compression => pil compression name
@@ -117,39 +128,76 @@ COMPRESSION_INFO = {
 }
 
 OPEN_INFO = {
-    # (PhotoInterpretation, SampleFormat, FillOrder, BitsPerSample,
+    # (ByteOrder, PhotoInterpretation, SampleFormat, FillOrder, BitsPerSample,
     #  ExtraSamples) => mode, rawmode
-    (0, 1, 1, (1,), ()): ("1", "1;I"),
-    (0, 1, 2, (1,), ()): ("1", "1;IR"),
-    (0, 1, 1, (8,), ()): ("L", "L;I"),
-    (0, 1, 2, (8,), ()): ("L", "L;IR"),
-    (1, 1, 1, (1,), ()): ("1", "1"),
-    (1, 1, 2, (1,), ()): ("1", "1;R"),
-    (1, 1, 1, (8,), ()): ("L", "L"),
-    (1, 1, 1, (8,8), (2,)): ("LA", "LA"),
-    (1, 1, 2, (8,), ()): ("L", "L;R"),
-    (1, 1, 1, (16,), ()): ("I;16", "I;16"),
-    (1, 2, 1, (16,), ()): ("I;16S", "I;16S"),
-    (1, 2, 1, (32,), ()): ("I", "I;32S"),
-    (1, 3, 1, (32,), ()): ("F", "F;32F"),
-    (2, 1, 1, (8,8,8), ()): ("RGB", "RGB"),
-    (2, 1, 2, (8,8,8), ()): ("RGB", "RGB;R"),
-    (2, 1, 1, (8,8,8,8), (0,)): ("RGBX", "RGBX"),
-    (2, 1, 1, (8,8,8,8), (1,)): ("RGBA", "RGBa"),
-    (2, 1, 1, (8,8,8,8), (2,)): ("RGBA", "RGBA"),
-    (2, 1, 1, (8,8,8,8), (999,)): ("RGBA", "RGBA"), # corel draw 10
-    (3, 1, 1, (1,), ()): ("P", "P;1"),
-    (3, 1, 2, (1,), ()): ("P", "P;1R"),
-    (3, 1, 1, (2,), ()): ("P", "P;2"),
-    (3, 1, 2, (2,), ()): ("P", "P;2R"),
-    (3, 1, 1, (4,), ()): ("P", "P;4"),
-    (3, 1, 2, (4,), ()): ("P", "P;4R"),
-    (3, 1, 1, (8,), ()): ("P", "P"),
-    (3, 1, 1, (8,8), (2,)): ("PA", "PA"),
-    (3, 1, 2, (8,), ()): ("P", "P;R"),
-    (5, 1, 1, (8,8,8,8), ()): ("CMYK", "CMYK"),
-    (6, 1, 1, (8,8,8), ()): ("YCbCr", "YCbCr"),
-    (8, 1, 1, (8,8,8), ()): ("LAB", "LAB"),
+    # FIXME: refactor to avoid repeating byteorder independent modes
+    (II, 0, 1, 1, (1,), ()): ("1", "1;I"),
+    (II, 0, 1, 2, (1,), ()): ("1", "1;IR"),
+    (II, 0, 1, 1, (8,), ()): ("L", "L;I"),
+    (II, 0, 1, 2, (8,), ()): ("L", "L;IR"),
+    (II, 1, 1, 1, (1,), ()): ("1", "1"),
+    (II, 1, 1, 2, (1,), ()): ("1", "1;R"),
+    (II, 1, 1, 1, (8,), ()): ("L", "L"),
+    (II, 1, 1, 1, (8,8), (2,)): ("LA", "LA"),
+    (II, 1, 1, 2, (8,), ()): ("L", "L;R"),
+    (II, 1, 1, 1, (16,), ()): ("I;16", "I;16"),
+    (II, 1, 2, 1, (16,), ()): ("I;16S", "I;16S"),
+    (II, 1, 1, 1, (32,), ()): ("I", "I;32N"),
+    (II, 1, 2, 1, (32,), ()): ("I", "I;32S"),
+    (II, 1, 3, 1, (32,), ()): ("F", "F;32F"),
+    (II, 2, 1, 1, (8,8,8), ()): ("RGB", "RGB"),
+    (II, 2, 1, 2, (8,8,8), ()): ("RGB", "RGB;R"),
+    (II, 2, 1, 1, (8,8,8,8), (0,)): ("RGBX", "RGBX"),
+    (II, 2, 1, 1, (8,8,8,8), (1,)): ("RGBA", "RGBa"),
+    (II, 2, 1, 1, (8,8,8,8), (2,)): ("RGBA", "RGBA"),
+    (II, 2, 1, 1, (8,8,8,8), (999,)): ("RGBA", "RGBA"), # corel draw 10
+    (II, 2, 1, 1, (16, 16, 16), ()): ("RGB", "RGB;16"),
+    (II, 3, 1, 1, (1,), ()): ("P", "P;1"),
+    (II, 3, 1, 2, (1,), ()): ("P", "P;1R"),
+    (II, 3, 1, 1, (2,), ()): ("P", "P;2"),
+    (II, 3, 1, 2, (2,), ()): ("P", "P;2R"),
+    (II, 3, 1, 1, (4,), ()): ("P", "P;4"),
+    (II, 3, 1, 2, (4,), ()): ("P", "P;4R"),
+    (II, 3, 1, 1, (8,), ()): ("P", "P"),
+    (II, 3, 1, 1, (8,8), (2,)): ("PA", "PA"),
+    (II, 3, 1, 2, (8,), ()): ("P", "P;R"),
+    (II, 5, 1, 1, (8,8,8,8), ()): ("CMYK", "CMYK"),
+    (II, 6, 1, 1, (8,8,8), ()): ("YCbCr", "YCbCr"),
+    (II, 8, 1, 1, (8,8,8), ()): ("LAB", "LAB"),
+
+    (MM, 0, 1, 1, (1,), ()): ("1", "1;I"),
+    (MM, 0, 1, 2, (1,), ()): ("1", "1;IR"),
+    (MM, 0, 1, 1, (8,), ()): ("L", "L;I"),
+    (MM, 0, 1, 2, (8,), ()): ("L", "L;IR"),
+    (MM, 1, 1, 1, (1,), ()): ("1", "1"),
+    (MM, 1, 1, 2, (1,), ()): ("1", "1;R"),
+    (MM, 1, 1, 1, (8,), ()): ("L", "L"),
+    (MM, 1, 1, 1, (8,8), (2,)): ("LA", "LA"),
+    (MM, 1, 1, 2, (8,), ()): ("L", "L;R"),
+    (MM, 1, 1, 1, (16,), ()): ("I;16B", "I;16B"),
+    (MM, 1, 2, 1, (16,), ()): ("I;16BS", "I;16BS"),
+    (MM, 1, 2, 1, (32,), ()): ("I;32BS", "I;32BS"),
+    (MM, 1, 3, 1, (32,), ()): ("F;32BF", "F;32BF"),
+    (MM, 2, 1, 1, (8,8,8), ()): ("RGB", "RGB"),
+    (MM, 2, 1, 2, (8,8,8), ()): ("RGB", "RGB;R"),
+    (MM, 2, 1, 1, (8,8,8,8), (0,)): ("RGBX", "RGBX"),
+    (MM, 2, 1, 1, (8,8,8,8), (1,)): ("RGBA", "RGBa"),
+    (MM, 2, 1, 1, (8,8,8,8), (2,)): ("RGBA", "RGBA"),
+    (MM, 2, 1, 1, (8,8,8,8), (999,)): ("RGBA", "RGBA"), # corel draw 10
+    (MM, 2, 1, 1, (16, 16, 16), ()): ("RGB", "RGB;16B"),
+    (MM, 3, 1, 1, (1,), ()): ("P", "P;1"),
+    (MM, 3, 1, 2, (1,), ()): ("P", "P;1R"),
+    (MM, 3, 1, 1, (2,), ()): ("P", "P;2"),
+    (MM, 3, 1, 2, (2,), ()): ("P", "P;2R"),
+    (MM, 3, 1, 1, (4,), ()): ("P", "P;4"),
+    (MM, 3, 1, 2, (4,), ()): ("P", "P;4R"),
+    (MM, 3, 1, 1, (8,), ()): ("P", "P"),
+    (MM, 3, 1, 1, (8,8), (2,)): ("PA", "PA"),
+    (MM, 3, 1, 2, (8,), ()): ("P", "P;R"),
+    (MM, 5, 1, 1, (8,8,8,8), ()): ("CMYK", "CMYK"),
+    (MM, 6, 1, 1, (8,8,8), ()): ("YCbCr", "YCbCr"),
+    (MM, 8, 1, 1, (8,8,8), ()): ("LAB", "LAB"),
+
 }
 
 PREFIXES = [b"MM\000\052", b"II\052\000", b"II\xBC\000"]
@@ -165,12 +213,12 @@ class ImageFileDirectory:
     # represents a TIFF tag directory.  to speed things up,
     # we don't decode tags unless they're asked for.
 
-    def __init__(self, prefix=b"II"):
+    def __init__(self, prefix):
         self.prefix = prefix[:2]
-        if self.prefix == b"MM":
+        if self.prefix == MM:
             self.i16, self.i32 = ib16, ib32
-            # FIXME: save doesn't yet support big-endian mode...
-        elif self.prefix == b"II":
+            self.o16, self.o32 = ob16, ob32
+        elif self.prefix == II:
             self.i16, self.i32 = il16, il32
             self.o16, self.o32 = ol16, ol32
         else:
@@ -180,6 +228,7 @@ class ImageFileDirectory:
     def reset(self):
         self.tags = {}
         self.tagdata = {}
+        self.tagtype = {} # added 2008-06-05 by Florian Hoech
         self.next = None
 
     # dictionary API (sort of)
@@ -228,7 +277,10 @@ class ImageFileDirectory:
             return default
 
     def has_key(self, tag):
-        return tag in self.tags or tag in self.tagdata
+        return (tag in self.tags) or (tag in self.tagdata)
+
+    def __contains__(self, tag):
+        return (tag in self.tags) or (tag in self.tagdata)
 
     def __setitem__(self, tag, value):
         if type(value) is not type(()):
@@ -275,14 +327,14 @@ class ImageFileDirectory:
 
     def load_float(self, data):
         a = array.array("f", data)
-        if self.prefix != byteorder:
+        if self.prefix != native_prefix:
             a.byteswap()
         return tuple(a)
     load_dispatch[11] = (4, load_float)
 
     def load_double(self, data):
         a = array.array("d", data)
-        if self.prefix != byteorder:
+        if self.prefix != native_prefix:
             a.byteswap()
         return tuple(a)
     load_dispatch[12] = (8, load_double)
@@ -307,7 +359,7 @@ class ImageFileDirectory:
             tag, typ = i16(ifd), i16(ifd, 2)
 
             if Image.DEBUG:
-                import TiffTags
+                from . import TiffTags
                 tagname = TiffTags.TAGS.get(tag, "unknown")
                 typname = TiffTags.TYPES.get(typ, "unknown")
                 print("tag: %s (%d)" % (tagname, tag), end=' ')
@@ -337,9 +389,10 @@ class ImageFileDirectory:
                 raise IOError("not enough data")
 
             self.tagdata[tag] = typ, data
+            self.tagtype[tag] = typ
 
             if Image.DEBUG:
-                if tag in (COLORMAP, IPTC_NAA_CHUNK, PHOTOSHOP_CHUNK):
+                if tag in (COLORMAP, IPTC_NAA_CHUNK, PHOTOSHOP_CHUNK, ICCPROFILE, XMP):
                     print("- value: <table: %d bytes>" % size)
                 else:
                     print("- value:", self[tag])
@@ -369,17 +422,21 @@ class ImageFileDirectory:
         # pass 1: convert tags to binary format
         for tag, value in tags:
 
-            if Image.DEBUG:
-                import TiffTags
-                tagname = TiffTags.TAGS.get(tag, "unknown")
-                print("save: %s (%d)" % (tagname, tag), end=' ')
-                print("- value:", value)
+            typ = None
 
-            if type(value[0]) is type(""):
+            if tag in self.tagtype:
+                typ = self.tagtype[tag]
+
+            if typ == 1:
+                # byte data
+                data = value = b"".join(value)
+            elif typ == 7:
+                # untyped data
+                data = value = b"".join(value)
+            elif type(value[0]) is type(b""):
                 # string data
                 typ = 2
-                data = value = "\0".join(value) + "\0"
-
+                data = value = b"\0".join(value) + b"\0"
             else:
                 # integer data
                 if tag == STRIPOFFSETS:
@@ -388,15 +445,27 @@ class ImageFileDirectory:
                 elif tag in (X_RESOLUTION, Y_RESOLUTION):
                     # identify rational data fields
                     typ = 5
-                else:
+                elif not typ:
                     typ = 3
                     for v in value:
                         if v >= 65536:
                             typ = 4
                 if typ == 3:
-                    data = b"".join(list(map(o16, value)))
+                    data = b"".join(map(o16, value))
                 else:
-                    data = b"".join(list(map(o32, value)))
+                    data = b"".join(map(o32, value))
+
+            if Image.DEBUG:
+                from . import TiffTags
+                tagname = TiffTags.TAGS.get(tag, "unknown")
+                typname = TiffTags.TYPES.get(typ, "unknown")
+                print("save: %s (%d)" % (tagname, tag), end=' ')
+                print("- type: %s (%d)" % (typname, typ), end=' ')
+                if tag in (COLORMAP, IPTC_NAA_CHUNK, PHOTOSHOP_CHUNK, ICCPROFILE, XMP):
+                    size = len(data)
+                    print("- value: <table: %d bytes>" % size)
+                else:
+                    print("- value:", value)
 
             # figure out if data fits into the directory
             if len(data) == 4:
@@ -424,6 +493,8 @@ class ImageFileDirectory:
             if Image.DEBUG > 1:
                 print(tag, typ, count, repr(value), repr(data))
             fp.write(o16(tag) + o16(typ) + o32(count) + value)
+
+        # -- overwrite here for multi-page --
         fp.write(b"\0\0\0\0") # end of directory
 
         # pass 3: write auxiliary data to file
@@ -494,7 +565,7 @@ class TiffImageFile(ImageFile.ImageFile):
 
         return self.__frame
 
-    def _decoder(self, rawmode, layer):
+    def _decoder(self, rawmode, layer, tile=None):
         "Setup decoder contexts"
 
         args = None
@@ -506,6 +577,7 @@ class TiffImageFile(ImageFile.ImageFile):
         elif compression == "jpeg":
             args = rawmode, ""
             if JPEGTABLES in self.tag:
+
                 # Hack to handle abbreviated JPEG headers
                 self.tile_prefix = self.tag[JPEGTABLES]
         elif compression == "packbits":
@@ -513,15 +585,26 @@ class TiffImageFile(ImageFile.ImageFile):
         elif compression == "tiff_lzw":
             args = rawmode
             if 317 in self.tag:
+
                 # Section 14: Differencing Predictor
                 self.decoderconfig = (self.tag[PREDICTOR][0],)
+        elif compression in ["tiff_ccitt", "group3", "group4", "tiff_raw_16"]:
+            args = (rawmode,
+                    compression,
+                    self.tag[FILLORDER][0] if FILLORDER in self.tag else -1,
+                    self.tag[STRIPBYTECOUNTS][tile] if (tile is not None and STRIPBYTECOUNTS in self.tag) else -1
+                    )
+        if ICCPROFILE in self.tag:
+
+            self.info['icc_profile'] = self.tag[ICCPROFILE]
 
         return args
 
     def _setup(self):
         "Setup this image object based on current tags"
 
-        if self.tag.has_key(0xBC01):
+        if 0xBC01 in self.tag:
+
             raise IOError("Windows Media Photo files not yet supported")
 
         getscalar = self.tag.getscalar
@@ -538,6 +621,7 @@ class TiffImageFile(ImageFile.ImageFile):
 
         if Image.DEBUG:
             print("*** Summary ***")
+
             print("- compression:", self._compression)
             print("- photometric_interpretation:", photo)
             print("- planar_configuration:", self._planar_configuration)
@@ -555,7 +639,7 @@ class TiffImageFile(ImageFile.ImageFile):
 
         # mode: check photometric interpretation and bits per pixel
         key = (
-            photo, format, fillorder,
+            self.tag.prefix, photo, format, fillorder,
             self.tag.get(BITSPERSAMPLE, (1,)),
             self.tag.get(EXTRASAMPLES, ())
             )
@@ -574,40 +658,46 @@ class TiffImageFile(ImageFile.ImageFile):
 
         self.info["compression"] = self._compression
 
-        xdpi = getscalar(X_RESOLUTION, (1, 1))
-        ydpi = getscalar(Y_RESOLUTION, (1, 1))
+        xres = getscalar(X_RESOLUTION, (1, 1))
+        yres = getscalar(Y_RESOLUTION, (1, 1))
 
-        if xdpi and ydpi and getscalar(RESOLUTION_UNIT, 1) == 1:
-            xdpi = xdpi[0] // (xdpi[1] or 1)
-            ydpi = ydpi[0] // (ydpi[1] or 1)
-            self.info["dpi"] = xdpi, ydpi
+        if xres and yres:
+            xres = xres[0] // (xres[1] or 1)
+            yres = yres[0] // (yres[1] or 1)
+            resunit = getscalar(RESOLUTION_UNIT, 1)
+            if resunit == 2: # dots per inch
+                self.info["dpi"] = xres, yres
+            elif resunit == 3: # dots per centimeter. convert to dpi
+                self.info["dpi"] = xres * 2.54, yres * 2.54
+            else: # No absolute unit of measurement
+                self.info["resolution"] = xres, yres
 
         # build tile descriptors
         x = y = l = 0
         self.tile = []
-        if self.tag.has_key(STRIPOFFSETS):
+        if STRIPOFFSETS in self.tag:
             # striped image
+            offsets = self.tag[STRIPOFFSETS]
             h = getscalar(ROWSPERSTRIP, ysize)
             w = self.size[0]
-            a = None
-            for o in self.tag[STRIPOFFSETS]:
-                if not a:
-                    a = self._decoder(rawmode, l)
+            for i in range(len(offsets)):
+                a = self._decoder(rawmode, l, i)
                 self.tile.append(
                     (self._compression,
                     (0, min(y, ysize), w, min(y+h, ysize)),
-                    o, a))
+                    offsets[i], a))
                 y = y + h
                 if y >= self.size[1]:
                     x = y = 0
                     l = l + 1
                     a = None
-        elif 324 in self.tag:
+        elif TILEOFFSETS in self.tag:
+
             # tiled image
             w = getscalar(322)
             h = getscalar(323)
             a = None
-            for o in self.tag[324]:
+            for o in self.tag[TILEOFFSETS]:
                 if not a:
                     a = self._decoder(rawmode, l)
                 # FIXME: this doesn't work if the image size
@@ -629,33 +719,38 @@ class TiffImageFile(ImageFile.ImageFile):
             raise SyntaxError("unknown data organization")
 
         # fixup palette descriptor
-        if self.mode == "P":
-            palette = [chr(a // 256) for a in self.tag[COLORMAP]]
-            self.palette = ImagePalette.raw("RGB;L", "".join(palette))
 
+        if self.mode == "P":
+            palette = bytes((a // 256) for a in self.tag[COLORMAP])
+            self.palette = ImagePalette.raw("RGB;L", palette)
 #
 # --------------------------------------------------------------------
 # Write TIFF files
 
-# little endian is default
+# little endian is default except for image modes with explict big endian byte-order
 
 SAVE_INFO = {
-    # mode => rawmode, photometrics, sampleformat, bitspersample, extra
-    "1": ("1", 1, 1, (1,), None),
-    "L": ("L", 1, 1, (8,), None),
-    "LA": ("LA", 1, 1, (8,8), 2),
-    "P": ("P", 3, 1, (8,), None),
-    "PA": ("PA", 3, 1, (8,8), 2),
-    "I": ("I;32S", 1, 2, (32,), None),
-    "I;16": ("I;16", 1, 1, (16,), None),
-    "I;16S": ("I;16S", 1, 2, (16,), None),
-    "F": ("F;32F", 1, 3, (32,), None),
-    "RGB": ("RGB", 2, 1, (8,8,8), None),
-    "RGBX": ("RGBX", 2, 1, (8,8,8,8), 0),
-    "RGBA": ("RGBA", 2, 1, (8,8,8,8), 2),
-    "CMYK": ("CMYK", 5, 1, (8,8,8,8), None),
-    "YCbCr": ("YCbCr", 6, 1, (8,8,8), None),
-    "LAB": ("LAB", 8, 1, (8,8,8), None),
+    # mode => rawmode, byteorder, photometrics, sampleformat, bitspersample, extra
+    "1": ("1", II, 1, 1, (1,), None),
+    "L": ("L", II, 1, 1, (8,), None),
+    "LA": ("LA", II, 1, 1, (8,8), 2),
+    "P": ("P", II, 3, 1, (8,), None),
+    "PA": ("PA", II, 3, 1, (8,8), 2),
+    "I": ("I;32S", II, 1, 2, (32,), None),
+    "I;16": ("I;16", II, 1, 1, (16,), None),
+    "I;16S": ("I;16S", II, 1, 2, (16,), None),
+    "F": ("F;32F", II, 1, 3, (32,), None),
+    "RGB": ("RGB", II, 2, 1, (8,8,8), None),
+    "RGBX": ("RGBX", II, 2, 1, (8,8,8,8), 0),
+    "RGBA": ("RGBA", II, 2, 1, (8,8,8,8), 2),
+    "CMYK": ("CMYK", II, 5, 1, (8,8,8,8), None),
+    "YCbCr": ("YCbCr", II, 6, 1, (8,8,8), None),
+    "LAB": ("LAB", II, 8, 1, (8,8,8), None),
+
+    "I;32BS": ("I;32BS", MM, 1, 2, (32,), None),
+    "I;16B": ("I;16B", MM, 1, 1, (16,), None),
+    "I;16BS": ("I;16BS", MM, 1, 2, (16,), None),
+    "F;32BF": ("F;32BF", MM, 1, 3, (32,), None),
 }
 
 def _cvt_res(value):
@@ -671,14 +766,17 @@ def _cvt_res(value):
 def _save(im, fp, filename):
 
     try:
-        rawmode, photo, format, bits, extra = SAVE_INFO[im.mode]
+        rawmode, prefix, photo, format, bits, extra = SAVE_INFO[im.mode]
     except KeyError:
         raise IOError("cannot write mode %s as TIFF" % im.mode)
 
-    ifd = ImageFileDirectory()
+    ifd = ImageFileDirectory(prefix)
 
-    # tiff header (write via IFD to get everything right)
-    fp.write(ifd.prefix + ifd.o16(42) + ifd.o32(8))
+    # -- multi-page -- skip TIFF header on subsequent pages
+    if fp.tell() == 0:
+        # tiff header (write via IFD to get everything right)
+        # PIL always starts the first IFD at offset 8
+        fp.write(ifd.prefix + ifd.o16(42) + ifd.o32(8))
 
     ifd[IMAGEWIDTH] = im.size[0]
     ifd[IMAGELENGTH] = im.size[1]
@@ -690,11 +788,22 @@ def _save(im, fp, filename):
         for key in (RESOLUTION_UNIT, X_RESOLUTION, Y_RESOLUTION):
             if key in im.tag.tagdata:
                 ifd[key] = im.tag.tagdata.get(key)
+        # preserve some more tags from original TIFF image file
+        # -- 2008-06-06 Florian Hoech
+        ifd.tagtype = im.tag.tagtype
+        for key in (IPTC_NAA_CHUNK, PHOTOSHOP_CHUNK, XMP):
+            if key in im.tag:
+
+                ifd[key] = im.tag[key]
+        # preserve ICC profile (should also work when saving other formats
+        # which support profiles as TIFF) -- 2008-06-06 Florian Hoech
+        if "icc_profile" in im.info:
+
+            ifd[ICCPROFILE] = im.info["icc_profile"]
     if "description" in im.encoderinfo:
         ifd[IMAGEDESCRIPTION] = im.encoderinfo["description"]
     if "resolution" in im.encoderinfo:
-        ifd[X_RESOLUTION] = ifd[Y_RESOLUTION] \
-                                = _cvt_res(im.encoderinfo["resolution"])
+        ifd[X_RESOLUTION] = ifd[Y_RESOLUTION] = _cvt_res(im.encoderinfo["resolution"])
     if "x resolution" in im.encoderinfo:
         ifd[X_RESOLUTION] = _cvt_res(im.encoderinfo["x resolution"])
     if "y resolution" in im.encoderinfo:
@@ -718,7 +827,7 @@ def _save(im, fp, filename):
 
     dpi = im.encoderinfo.get("dpi")
     if dpi:
-        ifd[RESOLUTION_UNIT] = 1
+        ifd[RESOLUTION_UNIT] = 2
         ifd[X_RESOLUTION] = _cvt_res(dpi[0])
         ifd[Y_RESOLUTION] = _cvt_res(dpi[1])
 
@@ -735,7 +844,7 @@ def _save(im, fp, filename):
 
     if im.mode == "P":
         lut = im.im.getpalette("RGB", "RGB;L")
-        ifd[COLORMAP] = tuple([ord(v) * 256 for v in lut])
+        ifd[COLORMAP] = tuple((v * 256) for v in lut)
 
     # data orientation
     stride = len(bits) * ((im.size[0]*bits[0]+7)//8)
@@ -749,6 +858,11 @@ def _save(im, fp, filename):
     ImageFile._save(im, fp, [
         ("raw", (0,0)+im.size, offset, (rawmode, stride, 1))
         ])
+
+    # -- helper for multi-page save --
+    if "_debug_multipage" in im.encoderinfo:
+        #just to access o32 and o16 (using correct byte order)
+        im._debug_multipage = ifd
 
 #
 # --------------------------------------------------------------------

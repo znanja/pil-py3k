@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library
-# $Id: BdfFontFile.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # bitmap distribution font (bdf) file parser
 #
@@ -17,8 +17,8 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image
-import FontFile
+from . import Image
+from . import FontFile
 
 # --------------------------------------------------------------------
 # parse X Bitmap Distribution Format (BDF)
@@ -74,7 +74,7 @@ def bdf_char(f):
     bbox = (dx, dy), (l, -d-y, x+l, -d), (0, 0, x, y)
 
     try:
-        im = Image.fromstring("1", (x, y), bitmap, "hex", "1")
+        im = Image.frombytes("1", (x, y), bitmap, "hex", "1")
     except ValueError:
         # deal with zero-width characters
         im = Image.new("1", (x, y))

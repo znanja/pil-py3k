@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: Image.py 2933 2006-12-03 12:08:22Z fredrik $
+# $Id$
 #
 # the Image class wrapper
 #
@@ -16,14 +16,17 @@
 # 2003-05-10 fl   PIL release 1.1.4
 # 2005-03-28 fl   PIL release 1.1.5
 # 2006-12-02 fl   PIL release 1.1.6
+# 2009-11-15 fl   PIL release 1.1.7
 #
-# Copyright (c) 1997-2006 by Secret Labs AB.  All rights reserved.
-# Copyright (c) 1995-2006 by Fredrik Lundh.
+# Copyright (c) 1997-2009 by Secret Labs AB.  All rights reserved.
+# Copyright (c) 1995-2009 by Fredrik Lundh.
 #
 # See the README file for information on usage and redistribution.
 #
 
-VERSION = "1.1.6-znanja1"
+__version__ = "1.1.7-znanja1"
+
+VERSION = __version__  # pre-1.1.8 compatibility
 
 try:
     import warnings
@@ -41,7 +44,7 @@ try:
     # __import__ to hide this from naive packagers; we don't really
     # depend on Tk unless ImageTk is used, and that module already
     # imports Tkinter)
-    __import__("tkinter._fix")
+    __import__("FixTk")
 except ImportError:
     pass
 
@@ -50,9 +53,7 @@ try:
     # the "open" function to identify files, but you cannot load
     # them.  Note that other modules should not refer to _imaging
     # directly; import Image and use the Image.core variable instead.
-    import _imaging
-    core = _imaging
-    del _imaging
+    import _imaging as core
 except ImportError as v:
     core = _imaging_not_installed()
     if str(v)[:20] == "Module use of python" and warnings:
@@ -65,18 +66,14 @@ except ImportError as v:
             RuntimeWarning
             )
 
-import ImageMode
-import ImagePalette
-
-import os, sys
+import os, string, sys
 
 # type stuff
-
 def isStringType(t):
     return isinstance(t, str)
 
-##
-# (Internal) Checks if an object is a tuple.
+def isBytesType(t):
+    return isinstance(t, bytes)
 
 def isTupleType(t):
     return isinstance(t, tuple)
@@ -95,10 +92,6 @@ def isDirectory(f):
     return isStringType(f) and os.path.isdir(f)
 
 import numbers, collections
-def isNumberType(x):
-    return isinstance(x, number.Number)
-def isSequenceType(x):
-    return isinstance(x, collections.Sequence)
 
 #
 # Debug level
@@ -175,9 +168,9 @@ _MODEINFO = {
     "CMYK": ("RGB", "L", ("C", "M", "Y", "K")),
     "YCbCr": ("RGB", "L", ("Y", "Cb", "Cr")),
 
-    # Experimental modes include I;16, I;16B, RGBa, BGR;15,
-    # and BGR;24.  Use these modes only if you know exactly
-    # what you're doing...
+    # Experimental modes include I;16, I;16L, I;16B, RGBa, BGR;15, and
+    # BGR;24.  Use these modes only if you know exactly what you're
+    # doing...
 
 }
 
@@ -188,20 +181,20 @@ else:
 
 _MODE_CONV = {
     # official modes
-    "1": ('|b1', None),
+    "1": ('|b1', None), # broken
     "L": ('|u1', None),
-    "I": ('%si4' % _ENDIAN, None), # FIXME: is this correct?
-    "F": ('%sf4' % _ENDIAN, None), # FIXME: is this correct?
+    "I": (_ENDIAN + 'i4', None),
+    "F": (_ENDIAN + 'f4', None),
     "P": ('|u1', None),
     "RGB": ('|u1', 3),
     "RGBX": ('|u1', 4),
     "RGBA": ('|u1', 4),
     "CMYK": ('|u1', 4),
-    "YCbCr": ('|u1', 4),
+    "YCbCr": ('|u1', 3),
 }
 
 def _conv_type_shape(im):
-    shape = im.size[::-1]
+    shape = im.size[1], im.size[0]
     typ, extra = _MODE_CONV[im.mode]
     if extra is None:
         return shape, typ
@@ -214,7 +207,7 @@ MODES.sort()
 
 # raw modes that may be memory mapped.  NOTE: if you change this, you
 # may have to modify the stride calculation in map.c too!
-_MAPMODES = ("L", "P", "RGBX", "RGBA", "CMYK", "I;16", "I;16B")
+_MAPMODES = ("L", "P", "RGBX", "RGBA", "CMYK", "I;16", "I;16L", "I;16B")
 
 ##
 # Gets the "base" mode for given mode.  This function returns "L" for
@@ -226,6 +219,7 @@ _MAPMODES = ("L", "P", "RGBX", "RGBA", "CMYK", "I;16", "I;16B")
 # @exception KeyError If the input mode was not a standard mode.
 
 def getmodebase(mode):
+    from . import ImageMode
     return ImageMode.getmode(mode).basemode
 
 ##
@@ -237,6 +231,7 @@ def getmodebase(mode):
 # @exception KeyError If the input mode was not a standard mode.
 
 def getmodetype(mode):
+    from . import ImageMode
     return ImageMode.getmode(mode).basetype
 
 ##
@@ -251,6 +246,7 @@ def getmodetype(mode):
 # @exception KeyError If the input mode was not a standard mode.
 
 def getmodebandnames(mode):
+    from . import ImageMode
     return ImageMode.getmode(mode).bands
 
 ##
@@ -261,6 +257,7 @@ def getmodebandnames(mode):
 # @exception KeyError If the input mode was not a standard mode.
 
 def getmodebands(mode):
+    from . import ImageMode
     return len(ImageMode.getmode(mode).bands)
 
 # --------------------------------------------------------------------
@@ -279,29 +276,29 @@ def preinit():
         return
 
     try:
-        import BmpImagePlugin
+        from . import BmpImagePlugin
     except ImportError:
         pass
     try:
-        import GifImagePlugin
-    except ImportError as err:
-        pass
-    try:
-        import JpegImagePlugin
+        from . import GifImagePlugin
     except ImportError:
         pass
     try:
-        import PpmImagePlugin
+        from . import JpegImagePlugin
     except ImportError:
         pass
     try:
-        import PngImagePlugin
+        from . import PpmImagePlugin
     except ImportError:
         pass
-#   try:
-#       import TiffImagePlugin
-#   except ImportError:
-#       pass
+    try:
+        from . import PngImagePlugin
+    except ImportError:
+        pass
+    try:
+        from . import TiffImagePlugin
+    except ImportError:
+        pass
 
     _initialized = 1
 
@@ -314,7 +311,7 @@ def init():
 
     global _initialized
     if _initialized >= 2:
-        return
+        return 0
 
     visited = {}
 
@@ -336,7 +333,7 @@ def init():
                 try:
                     sys.path.insert(0, directory)
                     try:
-                        __import__(f, globals(), locals(), [])
+                        __import__('PIL.'+f, globals(), locals(), [])
                     finally:
                         del sys.path[0]
                 except ImportError:
@@ -347,10 +344,10 @@ def init():
 
     if OPEN or SAVE:
         _initialized = 2
-
+        return 1
 
 # --------------------------------------------------------------------
-# Codec factories (used by tobytes/frombytes and ImageFile.load)
+# Codec factories (used by tostring/fromstring and ImageFile.load)
 
 def _getdecoder(mode, decoder_name, args, extra=()):
 
@@ -363,7 +360,7 @@ def _getdecoder(mode, decoder_name, args, extra=()):
     try:
         # get decoder
         decoder = getattr(core, decoder_name + "_decoder")
-        # print decoder, (mode,) + args + extra
+        # print(decoder, (mode,) + args + extra)
         return decoder(*(mode,) + args + extra)
     except AttributeError:
         raise IOError("decoder %s not available" % decoder_name)
@@ -389,25 +386,29 @@ def _getencoder(mode, encoder_name, args, extra=()):
 # Simple expression analyzer
 
 class _E:
-    def __init__(self, data): self.data = data
-    def __coerce__(self, other): return self, _E(other)
-    def __add__(self, other): return _E((self.data, "__add__", other.data))
-    def __mul__(self, other): return _E((self.data, "__mul__", other.data))
+    def __init__(self, data):
+        self.data = data
+    def __add__(self, other):
+        return _E((self.data, "__add__",
+                   other.data if hasattr(other, 'data') else other))
+    def __mul__(self, other):
+        return _E((self.data, "__mul__",
+                   other.data if hasattr(other, 'data') else other))
 
 def _getscaleoffset(expr):
     stub = ["stub"]
     data = expr(_E(stub)).data
     try:
         (a, b, c) = data # simplified syntax
-        if (a is stub and b == "__mul__" and isNumberType(c)):
+        if (a is stub and b == "__mul__" and isinstance(c, numbers.Number)):
             return c, 0.0
-        if (a is stub and b == "__add__" and isNumberType(c)):
+        if (a is stub and b == "__add__" and isinstance(c, numbers.Number)):
             return 1.0, c
     except TypeError: pass
     try:
         ((a, b, c), d, e) = data # full syntax
-        if (a is stub and b == "__mul__" and isNumberType(c) and
-            d == "__add__" and isNumberType(e)):
+        if (a is stub and b == "__mul__" and isinstance(c, numbers.Number) and
+            d == "__add__" and isinstance(e, numbers.Number)):
             return c, e
     except TypeError: pass
     raise ValueError("illegal expression")
@@ -423,7 +424,7 @@ def _getscaleoffset(expr):
 #
 # @see #open
 # @see #new
-# @see #frombytes
+# @see #fromstring
 
 class Image:
 
@@ -431,6 +432,8 @@ class Image:
     format_description = None
 
     def __init__(self):
+        # FIXME: take "new" parameters / other image?
+        # FIXME: turn mode and size into delegating properties?
         self.im = None
         self.mode = ""
         self.size = (0, 0)
@@ -446,8 +449,15 @@ class Image:
         new.size = im.size
         new.palette = self.palette
         if im.mode == "P":
+            from . import ImagePalette
             new.palette = ImagePalette.ImagePalette()
-        new.info = self.info.copy()
+        try:
+            new.info = self.info.copy()
+        except AttributeError:
+            # fallback (pre-1.5.2)
+            new.info = {}
+            for k, v in self.info:
+                new.info[k] = v
         return new
 
     _makeself = _new # compatibility
@@ -469,6 +479,13 @@ class Image:
             self.save(file, format)
         return file
 
+    def __repr__(self):
+        return "<%s.%s image mode=%s size=%dx%d at 0x%X>" % (
+            self.__class__.__module__, self.__class__.__name__,
+            self.mode, self.size[0], self.size[1],
+            id(self)
+            )
+
     def __getattr__(self, name):
         if name == "__array_interface__":
             # numpy array interface support
@@ -476,24 +493,23 @@ class Image:
             shape, typestr = _conv_type_shape(self)
             new['shape'] = shape
             new['typestr'] = typestr
-            new['data'] = self.tostring()
+            new['data'] = self.tobytes()
             return new
         raise AttributeError(name)
 
     ##
-    # Returns a string containing pixel data.
+    # Returns a byte string containing pixel data.
     #
     # @param encoder_name What encoder to use.  The default is to
     #    use the standard "raw" encoder.
     # @param *args Extra arguments to the encoder.
     # @return An 8-bit string.
 
-
     def tostring(self, encoder_name="raw", *args):
         "Return image as a binary string"
-        if warnings:
-            warnings.warn("tostring is deprecated, use tobytes instead.",
-                    DeprecationWarning)
+#        if warnings:
+#            warnings.warn("tostring is deprecated, use tobytes instead.",
+#                          DeprecationWarning)
         return self.tobytes(encoder_name, *args)
 
     def tobytes(self, encoder_name="raw", *args):
@@ -539,7 +555,7 @@ class Image:
         self.load()
         if self.mode != "1":
             raise ValueError("not a bitmap")
-        data = self.tostring("xbm")
+        data = self.tobytes("xbm")
         return b"".join([
             bytes("#define %s_width %d\n" % (name, self.size[0]),
                 encoding='ascii'),
@@ -579,9 +595,9 @@ class Image:
 
     def fromstring(self, data, decoder_name="raw", *args):
         "Load data to image from binary string"
-        if warnings:
-            warnings.warn("fromstring is deprecated, use frombytes instead.",
-                    DeprecationWarning)
+#        if warnings:
+#            warnings.warn("fromstring is deprecated, use frombytes instead.",
+#                          DeprecationWarning)
         self.frombytes(data, decoder_name, *args)
 
     ##
@@ -618,7 +634,6 @@ class Image:
         "Verify file contents."
         pass
 
-
     ##
     # Returns a converted copy of this image. For the "P" mode, this
     # method translates pixels through the palette.  If mode is
@@ -637,10 +652,18 @@ class Image:
     # "1"), all non-zero values are set to 255 (white). To use other
     # thresholds, use the {@link #Image.point} method.
     #
-    # @def convert(mode, matrix=None)
+    # @def convert(mode, matrix=None, **options)
     # @param mode The requested mode.
     # @param matrix An optional conversion matrix.  If given, this
     #    should be 4- or 16-tuple containing floating point values.
+    # @param options Additional options, given as keyword arguments.
+    # @keyparam dither Dithering method, used when converting from
+    #    mode "RGB" to "P".
+    #    Available methods are NONE or FLOYDSTEINBERG (default).
+    # @keyparam palette Palette to use when converting from mode "RGB"
+    #    to "P".  Available palettes are WEB or ADAPTIVE.
+    # @keyparam colors Number of colors to use for the ADAPTIVE palette.
+    #    Defaults to 256.
     # @return An Image object.
 
     def convert(self, mode=None, data=None, dither=None,
@@ -786,9 +809,10 @@ class Image:
 
         self.load()
 
-        from ImageFilter import Filter
-        if not isinstance(filter, Filter):
+        if isinstance(filter, collections.Callable):
             filter = filter()
+        if not hasattr(filter, "filter"):
+            raise TypeError("filter argument should be ImageFilter.Filter instance or class")
 
         if self.im.bands == 1:
             return self._new(filter.filter(self.im))
@@ -806,7 +830,7 @@ class Image:
 
     def getbands(self):
         "Get band names"
-
+        from . import ImageMode
         return ImageMode.getmode(self.mode).bands
 
     ##
@@ -912,7 +936,8 @@ class Image:
 
         self.load()
         try:
-            return list(map(ord, self.im.getpalette()))
+            #return list(map(ord, self.im.getpalette()))
+            return list(self.im.getpalette())
         except ValueError:
             return None # no palette
 
@@ -995,7 +1020,7 @@ class Image:
                 "'offset' is deprecated; use 'ImageChops.offset' instead",
                 DeprecationWarning, stacklevel=2
                 )
-        import ImageChops
+        from . import ImageChops
         return ImageChops.offset(self, xoffset, yoffset)
 
     ##
@@ -1062,7 +1087,7 @@ class Image:
             box = box + (box[0]+size[0], box[1]+size[1])
 
         if isStringType(im):
-            import ImageColor
+            from . import ImageColor
             im = ImageColor.getcolor(im, self.mode)
 
         elif isImageType(im):
@@ -1101,14 +1126,17 @@ class Image:
 
         self.load()
 
-        if not isSequenceType(lut):
+        if isinstance(lut, ImagePointHandler):
+            return lut.point(self)
+
+        if not isinstance(lut, collections.Sequence):
             # if it isn't a list, it should be a function
             if self.mode in ("I", "I;16", "F"):
                 # check if the function can be used with point_transform
                 scale, offset = _getscaleoffset(lut)
                 return self._new(self.im.point_transform(scale, offset))
             # for other modes, convert the function to a table
-            lut = list(map(lut, list(range(256)))) * self.im.bands
+            lut = list(map(lut, range(256))) * self.im.bands
 
         if self.mode == "F":
             # FIXME: _imaging returns a confusing error message for this case
@@ -1206,14 +1234,18 @@ class Image:
     def putpalette(self, data, rawmode="RGB"):
         "Put palette data into an image."
 
-        self.load()
         if self.mode not in ("L", "P"):
             raise ValueError("illegal image mode")
-        if not isStringType(data):
-            import array
-            data = array.array("B", data).tostring()
+        self.load()
+        from . import ImagePalette
+        if isinstance(data, ImagePalette.ImagePalette):
+            palette = ImagePalette.raw(data.rawmode, data.palette)
+        else:
+            if not isStringType(data):
+                data = bytes(data)
+            palette = ImagePalette.raw(rawmode, data)
         self.mode = "P"
-        self.palette = ImagePalette.raw(rawmode, data)
+        self.palette = palette
         self.palette.mode = "RGB"
         self.load() # install new palette
 
@@ -1302,7 +1334,7 @@ class Image:
 
         if expand:
             import math
-            angle = -angle * math.pi / 180
+            angle = -angle * math.pi / 180.0
             matrix = [
                  math.cos(angle), math.sin(angle), 0.0,
                 -math.sin(angle), math.cos(angle), 0.0
@@ -1327,7 +1359,7 @@ class Image:
             matrix[2] = self.size[0] / 2.0 - x
             matrix[5] = self.size[1] / 2.0 - y
 
-            return self.transform((w, h), AFFINE, matrix)
+            return self.transform((w, h), AFFINE, matrix, resample)
 
         if resample not in (NEAREST, BILINEAR, BICUBIC):
             raise ValueError("unknown resampling filter")
@@ -1456,7 +1488,7 @@ class Image:
     def show(self, title=None, command=None):
         "Display image (for debug purposes only)"
 
-        _showxv(self, title, command)
+        _show(self, title=title, command=command)
 
     ##
     # Split this image into individual bands. This method returns a
@@ -1470,10 +1502,13 @@ class Image:
     def split(self):
         "Split image into bands"
 
-        ims = []
         self.load()
-        for i in range(self.im.bands):
-            ims.append(self._new(self.im.getband(i)))
+        if self.im.bands == 1:
+            ims = [self.copy()]
+        else:
+            ims = []
+            for i in range(self.im.bands):
+                ims.append(self._new(self.im.getband(i)))
         return tuple(ims)
 
     ##
@@ -1520,8 +1555,8 @@ class Image:
 
         # preserve aspect ratio
         x, y = self.size
-        if x > size[0]: y = max(y * size[0] // x, 1); x = size[0]
-        if y > size[1]: x = max(x * size[1] // y, 1); y = size[1]
+        if x > size[0]: y = int(max(y * size[0] / x, 1)); x = int(size[0])
+        if y > size[1]: x = int(max(x * size[1] / y, 1)); y = int(size[1])
         size = x, y
 
         if size == self.size:
@@ -1572,8 +1607,10 @@ class Image:
     def transform(self, size, method, data=None, resample=NEAREST, fill=1):
         "Transform image"
 
-        import ImageTransform
-        if isinstance(method, ImageTransform.Transform):
+        if isinstance(method, ImageTransformHandler):
+            return method.transform(size, self, resample=resample, fill=fill)
+        if hasattr(method, "getdata"):
+            # compatibility w. old-style transform objects
             method, data = method.getdata()
         if data is None:
             raise ValueError("missing method data")
@@ -1677,8 +1714,22 @@ class _ImageCrop(Image):
             self.im = self.im.crop(self.__crop)
             self.__crop = None
 
+        if self.im:
+            return self.im.pixel_access(self.readonly)
+
         # FIXME: future versions should optimize crop/paste
         # sequences!
+
+# --------------------------------------------------------------------
+# Abstract handlers.
+
+class ImagePointHandler:
+    # used as a mixin by point transforms (for use with im.point)
+    pass
+
+class ImageTransformHandler:
+    # used as a mixin by geometry transforms (for use with im.transform)
+    pass
 
 # --------------------------------------------------------------------
 # Factories
@@ -1714,7 +1765,7 @@ def new(mode, size, color=0):
     if isStringType(color):
         # css3-style specifier
 
-        import ImageColor
+        from . import ImageColor
         color = ImageColor.getcolor(color, mode)
 
     return Image()._new(core.fill(mode, size, color))
@@ -1756,16 +1807,17 @@ def frombytes(mode, size, data, decoder_name="raw", *args):
 
 def fromstring(mode, size, data, decoder_name="raw", *args):
     "Load image from byte string"
-    if warnings:
-        warnings.warn("fromstring is deprecated, use frombytes instead.",
-                DeprecationWarning)
+#    if warnings:
+#        warnings.warn("fromstring is deprecated, use frombytes instead.",
+#                      DeprecationWarning)
     return frombytes(mode, size, data, decoder_name, *args)
+
 
 ##
 # (New in 1.1.4) Creates an image memory from pixel data in a string
 # or byte buffer.
 # <p>
-# This function is similar to {@link #frombytes}, but uses data in
+# This function is similar to {@link #fromstring}, but uses data in
 # the byte buffer, where possible.  This means that changes to the
 # original buffer object are reflected in this image).  Not all modes
 # can share memory; supported modes include "L", "RGBX", "RGBA", and
@@ -1819,11 +1871,11 @@ def frombuffer(mode, size, data, decoder_name="raw", *args):
             im.readonly = 1
             return im
 
-    return frombytes(*(mode, size, data, decoder_name, args))
+    return frombytes(mode, size, data, decoder_name, args)
 
 
 ##
-# (New in 1.1.6) Create an image memory from an object exporting
+# (New in 1.1.6) Creates an image memory from an object exporting
 # the array interface (using the buffer protocol).
 #
 # If obj is not contiguous, then the tostring method is called
@@ -1842,39 +1894,50 @@ def fromarray(obj, mode=None):
     except KeyError:
         strides = None
     if mode is None:
-        typestr = arr['typestr']
-        if not (typestr[0] == '|' or typestr[0] == _ENDIAN or
-                typestr[1:] not in ['u1', 'b1', 'i4', 'f4']):
-            raise TypeError("cannot handle data-type")
-        typestr = typestr[:2]
-        if typestr == 'i4':
-            mode = 'I'
-        elif typestr == 'f4':
-            mode = 'F'
-        elif typestr == 'b1':
-            mode = '1'
-        elif ndim == 2:
-            mode = 'L'
-        elif ndim == 3:
-            mode = 'RGB'
-        elif ndim == 4:
-            mode = 'RGBA'
-        else:
-            raise TypeError("Do not understand data.")
-    ndmax = 4
-    bad_dims=0
-    if mode in ['1','L','I','P','F']:
+        try:
+            typekey = (1, 1) + shape[2:], arr['typestr']
+            mode, rawmode = _fromarray_typemap[typekey]
+        except KeyError:
+            # print typekey
+            raise TypeError("Cannot handle this data type")
+    else:
+        rawmode = mode
+    if mode in ["1", "L", "I", "P", "F"]:
         ndmax = 2
-    elif mode == 'RGB':
+    elif mode == "RGB":
         ndmax = 3
+    else:
+        ndmax = 4
     if ndim > ndmax:
         raise ValueError("Too many dimensions.")
 
-    size = shape[:2][::-1]
+    size = shape[1], shape[0]
     if strides is not None:
         obj = obj.tostring()
 
-    return frombuffer(mode, size, obj, "raw", mode, 0, 1)
+    return frombuffer(mode, size, obj, "raw", rawmode, 0, 1)
+
+_fromarray_typemap = {
+    # (shape, typestr) => mode, rawmode
+    # first two members of shape are set to one
+    # ((1, 1), "|b1"): ("1", "1"), # broken
+    ((1, 1), "|u1"): ("L", "L"),
+    ((1, 1), "|i1"): ("I", "I;8"),
+    ((1, 1), "<i2"): ("I", "I;16"),
+    ((1, 1), ">i2"): ("I", "I;16B"),
+    ((1, 1), "<i4"): ("I", "I;32"),
+    ((1, 1), ">i4"): ("I", "I;32B"),
+    ((1, 1), "<f4"): ("F", "F;32F"),
+    ((1, 1), ">f4"): ("F", "F;32BF"),
+    ((1, 1), "<f8"): ("F", "F;64F"),
+    ((1, 1), ">f8"): ("F", "F;64BF"),
+    ((1, 1, 3), "|u1"): ("RGB", "RGB"),
+    ((1, 1, 4), "|u1"): ("RGBA", "RGBA"),
+    }
+
+# shortcuts
+_fromarray_typemap[((1, 1), _ENDIAN + "i4")] = ("I", "I")
+_fromarray_typemap[((1, 1), _ENDIAN + "f4")] = ("F", "F")
 
 ##
 # Opens and identifies the given image file.
@@ -1919,19 +1982,16 @@ def open(fp, mode="r"):
         except (SyntaxError, IndexError, TypeError):
             pass
 
-    init()
+    if init():
 
-    for i in ID:
-        try:
-            factory, accept = OPEN[i]
-            if not accept or accept(prefix):
-                fp.seek(0)
-                return factory(fp, filename)
-        except (SyntaxError, IndexError, TypeError) as err:
-            #import traceback
-            #traceback.print_exc()
-            #print(err, "<<<<<")
-            pass
+        for i in ID:
+            try:
+                factory, accept = OPEN[i]
+                if not accept or accept(prefix):
+                    fp.seek(0)
+                    return factory(fp, filename)
+            except (SyntaxError, IndexError, TypeError):
+                pass
 
     raise IOError("cannot identify image file")
 
@@ -2072,42 +2132,12 @@ def register_extension(id, extension):
 
 
 # --------------------------------------------------------------------
-# Simple display support
+# Simple display support.  User code may override this.
 
-def _showxv(image, title=None, command=None):
+def _show(image, **options):
+    # override me, as necessary
+    _showxv(*(image,), **options)
 
-    if os.name == "nt":
-        format = "BMP"
-    elif sys.platform == "darwin":
-        format = "JPEG"
-        if not command:
-            command = "open -a /Applications/Preview.app"
-    else:
-        format = None
-        if not command:
-            command = "xv"
-            if title:
-                command = command + " -name \"%s\"" % title
-
-    if image.mode == "I;16":
-        # @PIL88 @PIL101
-        # "I;16" isn't an 'official' mode, but we still want to
-        # provide a simple way to show 16-bit images.
-        base = "L"
-    else:
-        base = getmodebase(image.mode)
-    if base != image.mode and image.mode != "1":
-        file = image.convert(base)._dump(format=format)
-    else:
-        file = image._dump(format=format)
-
-    if os.name == "nt":
-        command = "start /wait %s && del /f %s" % (file, file)
-    elif sys.platform == "darwin":
-        # on darwin open returns immediately resulting in the temp
-        # file removal while app is opening
-        command = "(%s %s; sleep 20; rm -f %s)&" % (command, file, file)
-    else:
-        command = "(%s %s; rm -f %s)&" % (command, file, file)
-
-    os.system(command)
+def _showxv(image, title=None, **options):
+    from . import ImageShow
+    ImageShow.show(*(image, title), **options)

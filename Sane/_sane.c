@@ -51,7 +51,7 @@ PySane_Error(SANE_Status st)
   return NULL;
 }
 
-static PyTypeObject SaneDev_Type;
+staticforward PyTypeObject SaneDev_Type;
 
 #define SaneDevObject_Check(v)	((v)->ob_type == &SaneDev_Type)
 
@@ -1101,7 +1101,7 @@ SaneDev_getattr(SaneDevObject *self, char *name)
 	return Py_FindMethod(SaneDev_methods, (PyObject *)self, name);
 }
 
-static PyTypeObject SaneDev_Type = {
+staticforward PyTypeObject SaneDev_Type = {
 	PyObject_HEAD_INIT(&PyType_Type)
 	0,			/*ob_size*/
 	"SaneDev",			/*tp_name*/

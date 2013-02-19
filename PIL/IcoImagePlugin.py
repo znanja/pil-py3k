@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: IcoImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # Windows Icon support for PIL
 #
@@ -19,7 +19,7 @@
 
 __version__ = "0.1"
 
-import Image, BmpImagePlugin
+from . import Image, BmpImagePlugin
 
 
 #

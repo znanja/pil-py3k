@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: ImImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # Mac OS X icns file decoder, based on icns.py by Bob Ippolito.
 #
@@ -14,7 +14,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image, ImageFile
+from . import Image, ImageFile
 import struct
 
 HEADERSIZE = 8

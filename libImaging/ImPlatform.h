@@ -1,6 +1,6 @@
 /* 
  * The Python Imaging Library
- * $Id: ImPlatform.h 2134 2004-10-06 08:55:20Z fredrik $
+ * $Id$
  *
  * platform declarations for the imaging core library
  *
@@ -28,7 +28,7 @@
    the tons of casts that VC++ seem to require.  This code is compiled
    with numerous other compilers as well, so any real errors are likely
    to be catched anyway. */
-#pragma warning(disable: 4244) /* conversion from 'float' to 'int' */
+//#pragma warning(disable: 4244) /* conversion from 'float' to 'int' */
 #endif
 
 #if defined(_MSC_VER)

@@ -1,11 +1,11 @@
 #
 # The Python Imaging Library
-# $Id: player.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 
-from tkinter import *
-import Image, ImageTk
 import sys
+from tkinter import *
+from PIL import Image, ImageTk
 
 
 Image.DEBUG = 0
@@ -14,7 +14,7 @@ Image.DEBUG = 0
 # --------------------------------------------------------------------
 # experimental: support ARG animation scripts
 
-import ArgImagePlugin
+from PIL import ArgImagePlugin
 
 def applet_hook(animation, images):
     app = animation(animation_display, images)

@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: PpmImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # PPM support for PIL
 #
@@ -19,7 +19,7 @@ __version__ = "0.2"
 
 import string
 
-import Image, ImageFile
+from . import Image, ImageFile
 
 #
 # --------------------------------------------------------------------

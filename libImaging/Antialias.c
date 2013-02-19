@@ -1,6 +1,6 @@
 /*
  * The Python Imaging Library
- * $Id: Antialias.c 2408 2005-05-15 09:31:27Z Fredrik $
+ * $Id$
  *
  * pilopen antialiasing support 
  *
@@ -73,7 +73,7 @@ static inline float bicubic_filter(float x)
     if (x < 1.0)
         return (((a + 2.0) * x) - (a + 3.0)) * x*x + 1;
     if (x < 2.0)
-        return (((a * x) - 5*a) * x + 8) * x - 4*a;
+        return (((a * x) - 5*a) * x + 8*a) * x - 4*a;
     return 0.0;
 #undef a
 }
@@ -153,8 +153,8 @@ ImagingStretch(Imaging imOut, Imaging imIn, int filter)
             if (ymin < 0.0)
                 ymin = 0.0;
             ymax = ceil(center + support);
-            if (ymax > imIn->ysize)
-                ymax = imIn->ysize;
+            if (ymax > (float) imIn->ysize)
+		ymax = (float) imIn->ysize;
             for (y = (int) ymin; y < (int) ymax; y++) {
                 float w = filterp->filter((y - center + 0.5) * ss) * ss;
                 k[y - (int) ymin] = w;
@@ -202,7 +202,7 @@ ImagingStretch(Imaging imOut, Imaging imIn, int filter)
                         ss = 0.0;
                         for (y = (int) ymin; y < (int) ymax; y++)
                             ss = ss + IMAGING_PIXEL_I(imIn, xx, y) * k[y - (int) ymin];
-                        IMAGING_PIXEL_I(imOut, xx, yy) = ss * ww;
+                        IMAGING_PIXEL_I(imOut, xx, yy) = (int) ss * ww;
                     }
                     break;
                 case IMAGING_TYPE_FLOAT32:
@@ -229,8 +229,8 @@ ImagingStretch(Imaging imOut, Imaging imIn, int filter)
             if (xmin < 0.0)
                 xmin = 0.0;
             xmax = ceil(center + support);
-            if (xmax > imIn->xsize)
-                xmax = imIn->xsize;
+            if (xmax > (float) imIn->xsize)
+		xmax = (float) imIn->xsize;
             for (x = (int) xmin; x < (int) xmax; x++) {
                 float w = filterp->filter((x - center + 0.5) * ss) * ss;
                 k[x - (int) xmin] = w;
@@ -281,7 +281,7 @@ ImagingStretch(Imaging imOut, Imaging imIn, int filter)
                         ss = 0.0;
                         for (x = (int) xmin; x < (int) xmax; x++)
                             ss = ss + IMAGING_PIXEL_I(imIn, x, yy) * k[x - (int) xmin];
-                        IMAGING_PIXEL_I(imOut, xx, yy) = ss * ww;
+                        IMAGING_PIXEL_I(imOut, xx, yy) = (int) ss * ww;
                     }
                     break;
                 case IMAGING_TYPE_FLOAT32:

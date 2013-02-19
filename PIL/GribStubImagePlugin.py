@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library
-# $Id: GribStubImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # GRIB stub adapter
 #
@@ -9,7 +9,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image, ImageFile
+from . import Image, ImageFile
 
 _handler = None
 

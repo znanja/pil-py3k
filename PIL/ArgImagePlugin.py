@@ -2,7 +2,7 @@
 # THIS IS WORK IN PROGRESS
 #
 # The Python Imaging Library.
-# $Id: ArgImagePlugin.py 2309 2005-03-02 15:06:34Z fredrik $
+# $Id$
 #
 # ARG animation support code
 #
@@ -20,11 +20,9 @@
 
 __version__ = "0.4"
 
-import marshal
+from . import Image, ImageFile, ImagePalette
 
-import Image, ImageFile, ImagePalette
-
-from PngImagePlugin import i16, i32, ChunkStream, _MODES
+from .PngImagePlugin import i16, i32, ChunkStream, _MODES
 
 MAGIC = b"\212ARG\r\n\032\n"
 
@@ -410,6 +408,14 @@ class ArgImageFile(ImageFile.ImageFile):
     format_description = "Animated raster graphics"
 
     def _open(self):
+
+        if Image.warnings:
+            Image.warnings.warn(
+                "The ArgImagePlugin driver is obsolete, and will be removed "
+                "from a future release of PIL.  If you rely on this module, "
+                "please contact the PIL authors.",
+                RuntimeWarning
+                )
 
         if self.fp.read(8) != MAGIC:
             raise SyntaxError("not an ARG file")

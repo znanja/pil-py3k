@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library
-# $Id: ImageGrab.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # screen grabber (windows only)
 #
@@ -15,7 +15,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image
+from . import Image
 
 ##
 # (New in 1.1.3)  The <b>ImageGrab</b> module can be used to copy
@@ -45,7 +45,7 @@ except AttributeError:
 
 def grab(bbox=None):
     size, data = grabber()
-    im = Image.fromstring(
+    im = Image.frombytes(
         "RGB", size, data,
         # RGB, 32-bit line padding, origo in lower left corner
         "raw", "BGR", (size[0]*3 + 3) & -4, -1
@@ -65,7 +65,8 @@ def grab(bbox=None):
 def grabclipboard():
     debug = 0 # temporary interface
     data = Image.core.grabclipboard(debug)
-    if Image.isStringType(data):
-        import BmpImagePlugin, io
-        return BmpImagePlugin.DibImageFile(io.StringIO(data))
+    if Image.isBytesType(data):
+        import io
+        from . import BmpImagePlugin
+        return BmpImagePlugin.DibImageFile(io.BytesIO(data))
     return data

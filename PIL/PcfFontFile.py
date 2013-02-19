@@ -2,7 +2,7 @@
 # THIS IS WORK IN PROGRESS
 #
 # The Python Imaging Library
-# $Id: PcfFontFile.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # portable compiled font file parser
 #
@@ -16,8 +16,8 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image
-import FontFile
+from . import Image
+from . import FontFile
 
 # --------------------------------------------------------------------
 # declarations
@@ -224,7 +224,7 @@ class PcfFontFile(FontFile.FontFile):
             x, y, l, r, w, a, d, f = metrics[i]
             b, e = offsets[i], offsets[i+1]
             bitmaps.append(
-                Image.fromstring("1", (x, y), data[b:e], "raw", mode, pad(x))
+                Image.frombytes("1", (x, y), data[b:e], "raw", mode, pad(x))
                 )
 
         return bitmaps

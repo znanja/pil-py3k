@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library
-# $Id: pilfont.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # PIL raster font compiler
 #
@@ -15,8 +15,8 @@ import site
 import glob, os, sys
 
 # drivers
-import BdfFontFile
-import PcfFontFile
+from PIL import BdfFontFile
+from PIL import PcfFontFile
 
 if len(sys.argv) <= 1:
     print("PILFONT", VERSION, "-- PIL font compiler.")

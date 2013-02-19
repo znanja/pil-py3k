@@ -1,7 +1,7 @@
 #! /usr/local/bin/python
 #
 # The Python Imaging Library.
-# $Id: pilfile.py 2813 2006-10-07 10:11:35Z fredrik $
+# $Id$
 #
 # a utility to identify image files
 #
@@ -19,7 +19,7 @@
 
 import getopt, glob, sys
 
-import Image
+from PIL import Image
 
 if len(sys.argv) == 1:
     print("PIL File 0.4/2003-09-30 -- identify image files")

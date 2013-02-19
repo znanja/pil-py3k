@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: ImageFile.py 2930 2006-12-02 13:50:40Z fredrik $
+# $Id$
 #
 # base class for image file handlers
 #
@@ -29,10 +29,10 @@
 
 import os
 import io
-import sys
+import string
 import traceback
 
-import Image
+from . import Image
 
 MAXBLOCK = 65536
 
@@ -45,6 +45,15 @@ ERRORS = {
     -8: "bad configuration",
     -9: "out of memory error"
 }
+
+def raise_ioerror(error):
+    try:
+        message = Image.core.getcodecstatus(error)
+    except AttributeError:
+        message = ERRORS.get(error)
+    if not message:
+        message = "decoder error %d" % error
+    raise IOError(message + " when reading image file")
 
 #
 # --------------------------------------------------------------------
@@ -176,7 +185,7 @@ class ImageFile(Image.Image):
 
             try:
                 # FIXME: This is a hack to handle TIFF's JpegTables tag.
-                prefix = self.tile_prefix # XXX bytes!
+                prefix = self.tile_prefix
             except AttributeError:
                 prefix = b""
 
@@ -207,8 +216,7 @@ class ImageFile(Image.Image):
         self.fp = None # might be shared
 
         if not self.map and e < 0:
-            error = ERRORS.get(e, "decoder error %d" % e)
-            raise IOError(error + " when reading image file")
+            raise_ioerror(e)
 
         # post processing
         if hasattr(self, "tile_post_rotate"):
@@ -222,8 +230,7 @@ class ImageFile(Image.Image):
 
     def load_prepare(self):
         # create image memory if necessary
-        if not self.im or\
-           self.im.mode != self.mode or self.im.size != self.size:
+        if not self.im or self.im.mode != self.mode or self.im.size != self.size:
             self.im = Image.core.new(self.mode, self.size)
         # create palette (optional)
         if self.mode == "P":
@@ -309,13 +316,13 @@ class _ParserFile:
 
     def readline(self):
         # FIXME: this is slow!
-        s = ""
+        s = b""
         while 1:
             c = self.read(1)
             if not c:
                 break
             s = s + c
-            if c == "\n":
+            if c == b"\n":
                 break
         return s
 
@@ -376,8 +383,7 @@ class Parser:
                 if e < 0:
                     # decoding error
                     self.image = None
-                    error = ERRORS.get(e, "decoder error %d" % e)
-                    raise IOError(error + " when reading image file")
+                    raise_ioerror(e)
                 else:
                     # end of image
                     return
@@ -434,7 +440,7 @@ class Parser:
         # finish decoding
         if self.decoder:
             # get rid of what's left in the buffers
-            self.feed("")
+            self.feed(b"")
             self.data = self.decoder = None
             if not self.finished:
                 raise IOError("image was incomplete")
@@ -447,6 +453,7 @@ class Parser:
                 fp = _ParserFile(self.data)
                 self.image = Image.open(fp)
             finally:
+                self.image.load()
                 fp.close() # explicitly close the virtual file
         return self.image
 

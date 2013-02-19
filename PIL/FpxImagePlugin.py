@@ -2,7 +2,7 @@
 # THIS IS WORK IN PROGRESS
 #
 # The Python Imaging Library.
-# $Id: FpxImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # FlashPix support for PIL
 #
@@ -19,8 +19,8 @@
 __version__ = "0.1"
 
 
-import Image, ImageFile
-from OleFileIO import *
+from . import Image, ImageFile
+from .OleFileIO import *
 
 
 # we map from colour field tuples to (mode, rawmode) descriptors

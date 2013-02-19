@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: XpmImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # XPM File handling
 #
@@ -19,7 +19,7 @@ __version__ = "0.2"
 
 
 import re
-import Image, ImageFile, ImagePalette
+from . import Image, ImageFile, ImagePalette
 
 # XPM header
 xpm_head = re.compile(b"\"([0-9]*) ([0-9]*) ([0-9]*) ([0-9]*)")

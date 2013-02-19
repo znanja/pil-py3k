@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: PngImagePlugin.py 2203 2004-12-19 14:32:32Z fredrik $
+# $Id$
 #
 # PNG support code
 #
@@ -20,18 +20,25 @@
 # 2004-08-31 fl   Do basic sanity check on chunk identifiers (0.8)
 # 2004-09-20 fl   Added PngInfo chunk container
 # 2004-12-18 fl   Added DPI read support (based on code by Niki Spahiev)
+# 2008-08-13 fl   Added tRNS support for RGB images
+# 2009-03-06 fl   Support for preserving ICC profiles (by Florian Hoech)
+# 2009-03-08 fl   Added zTXT support (from Lowell Alleman)
+# 2009-03-29 fl   Read interlaced PNG files (from Conrado Porto Lopes Gouvua)
 #
-# Copyright (c) 1997-2004 by Secret Labs AB
+# Copyright (c) 1997-2009 by Secret Labs AB
 # Copyright (c) 1996 by Fredrik Lundh
 #
 # See the README file for information on usage and redistribution.
 #
 
-__version__ = "0.8.2"
+__version__ = "0.9"
 
 import re
+import zlib
 
-import Image, ImageFile, ImagePalette
+from . import Image
+from . import ImageFile
+from . import ImagePalette
 
 
 def i16(c):
@@ -103,12 +110,12 @@ class ChunkStream:
 
         self.queue.append((cid, pos, len))
 
-    def call(self, cid, pos, len):
+    def call(self, cid, pos, size):
         "Call the appropriate chunk handler"
 
         if Image.DEBUG:
-            print("STREAM", cid, pos, len)
-        return getattr(self, "chunk_" + cid)(pos, len)
+            print("STREAM", cid, pos, size)
+        return getattr(self, "chunk_" + cid)(pos, size)
 
     def crc(self, cid, data):
         "Read and verify checksum"
@@ -124,7 +131,7 @@ class ChunkStream:
 
         self.fp.read(4)
 
-    def verify(self, endchunk = "IEND"):
+    def verify(self, endchunk = b"IEND"):
 
         # Simple approach; just calculate checksum for all remaining
         # blocks.  Must be called directly after open.
@@ -155,9 +162,9 @@ class PngInfo:
     def add_text(self, key, value, zip=0):
         if zip:
             import zlib
-            self.add("zTXt", key + "\0\0" + zlib.compress(value))
+            self.add(b"zTXt", key + b"\0\0" + zlib.compress(value))
         else:
-            self.add("tEXt", key + "\0" + value)
+            self.add(b"tEXt", key + b"\0" + value)
 
 # --------------------------------------------------------------------
 # PNG image stream (IHDR/IEND)
@@ -170,10 +177,34 @@ class PngStream(ChunkStream):
 
         # local copies of Image attributes
         self.im_info = {}
+        self.im_text = {}
         self.im_size = (0,0)
         self.im_mode = None
         self.im_tile = None
         self.im_palette = None
+
+    def chunk_iCCP(self, pos, len):
+
+        # ICC profile
+        s = ImageFile._safe_read(self.fp, len)
+        # according to PNG spec, the iCCP chunk contains:
+        # Profile name  1-79 bytes (character string)
+        # Null separator        1 byte (null character)
+        # Compression method    1 byte (0)
+        # Compressed profile    n bytes (zlib with deflate compression)
+        i = s.find(b"\0")
+        if Image.DEBUG:
+            print("iCCP profile name", s[:i])
+            print("Compression method", s[i])
+        comp_method = s[i]
+        if comp_method != 0:
+            raise SyntaxError("Unknown compression method %s in iCCP chunk" % comp_method)
+        try:
+            icc_profile = zlib.decompress(s[i+2:])
+        except zlib.error:
+            icc_profile = None # FIXME
+        self.im_info["icc_profile"] = icc_profile
+        return s
 
     def chunk_IHDR(self, pos, len):
 
@@ -202,10 +233,10 @@ class PngStream(ChunkStream):
         # end of PNG image
         raise EOFError
 
-    def chunk_PLTE(self, pos, len):
+    def chunk_PLTE(self, pos, size):
 
         # palette
-        s = ImageFile._safe_read(self.fp, len)
+        s = ImageFile._safe_read(self.fp, size)
         if self.im_mode == "P":
             self.im_palette = "RGB", s
         return s
@@ -215,11 +246,13 @@ class PngStream(ChunkStream):
         # transparency
         s = ImageFile._safe_read(self.fp, len)
         if self.im_mode == "P":
-            i = s.find(b"\x00")
+            i = s.find(b"\0")
             if i >= 0:
                 self.im_info["transparency"] = i
         elif self.im_mode == "L":
             self.im_info["transparency"] = i16(s)
+        elif self.im_mode == "RGB":
+            self.im_info["transparency"] = i16(s), i16(s[2:]), i16(s[4:])
         return s
 
     def chunk_gAMA(self, pos, len):
@@ -251,9 +284,20 @@ class PngStream(ChunkStream):
         except ValueError:
             k = s; v = b"" # fallback for broken tEXt tags
         if k:
-            self.im_info[k] = v
+            self.im_info[k] = self.im_text[k] = v
         return s
 
+    def chunk_zTXt(self, pos, len):
+
+        # compressed text
+        s = ImageFile._safe_read(self.fp, len)
+        k, v = s.split(b"\0", 1)
+        comp_method = v[0]
+        if comp_method != 0:
+            raise SyntaxError("Unknown compression method %s in zTXt chunk" % comp_method)
+        import zlib
+        self.im_info[k] = self.im_text[k] = zlib.decompress(v[1:])
+        return s
 
 # --------------------------------------------------------------------
 # PNG reader
@@ -284,16 +328,16 @@ class PngImageFile(ImageFile.ImageFile):
             #
             # get next chunk
 
-            cid, pos, len = self.png.read()
+            cid, pos, size = self.png.read()
 
             try:
-                s = self.png.call(cid.decode('ascii'), pos, len)
+                s = self.png.call(cid.decode('ascii'), pos, size)
             except EOFError:
                 break
             except AttributeError:
                 if Image.DEBUG:
-                    print(cid, pos, len, "(unknown)")
-                s = ImageFile._safe_read(self.fp, len)
+                    print(cid, pos, size, "(unknown)")
+                s = ImageFile._safe_read(self.fp, size)
 
             self.png.crc(cid, s)
 
@@ -307,13 +351,14 @@ class PngImageFile(ImageFile.ImageFile):
         self.mode = self.png.im_mode
         self.size = self.png.im_size
         self.info = self.png.im_info
+        self.text = self.png.im_text # experimental
         self.tile = self.png.im_tile
 
         if self.png.im_palette:
             rawmode, data = self.png.im_palette
             self.palette = ImagePalette.raw(rawmode, data)
 
-        self.__idat = len # used by load_read()
+        self.__idat = size # used by load_read()
 
 
     def verify(self):
@@ -334,7 +379,7 @@ class PngImageFile(ImageFile.ImageFile):
         "internal: prepare to read PNG file"
 
         if self.info.get("interlace"):
-            raise IOError("cannot read interlaced PNG files")
+            self.decoderconfig = self.decoderconfig + (1,)
 
         ImageFile.ImageFile.load_prepare(self)
 
@@ -401,7 +446,7 @@ _OUTMODES = {
 def putchunk(fp, cid, *data):
     "Write a PNG chunk (including CRC field)"
 
-    data = b''.join(data)#array.array("B", data).tostring()
+    data = b"".join(data)
 
     fp.write(o32(len(data)) + cid)
     fp.write(data)
@@ -488,6 +533,9 @@ def _save(im, fp, filename, chunk=putchunk, check=0):
         elif im.mode == "L":
             transparency = max(0, min(65535, im.encoderinfo["transparency"]))
             chunk(fp, b"tRNS", o16(transparency))
+        elif im.mode == "RGB":
+            red, green, blue = im.encoderinfo["transparency"]
+            chunk(fp, b"tRNS", o16(red) + o16(green) + o16(blue))
         else:
             raise IOError("cannot use transparency for this mode")
 
@@ -506,6 +554,23 @@ def _save(im, fp, filename, chunk=putchunk, check=0):
     if info:
         for cid, data in info.chunks:
             chunk(fp, cid, data)
+
+    # ICC profile writing support -- 2008-06-06 Florian Hoech
+    if "icc_profile" in im.info:
+        # ICC profile
+        # according to PNG spec, the iCCP chunk contains:
+        # Profile name  1-79 bytes (character string)
+        # Null separator        1 byte (null character)
+        # Compression method    1 byte (0)
+        # Compressed profile    n bytes (zlib with deflate compression)
+        try:
+            import ICCProfile
+            p = ICCProfile.ICCProfile(im.info["icc_profile"])
+            name = p.tags.desc.get("ASCII", p.tags.desc.get("Unicode", p.tags.desc.get("Macintosh", p.tags.desc.get("en", {}).get("US", "ICC Profile")))).encode("latin1", "replace")[:79]
+        except ImportError:
+            name = b"ICC Profile"
+        data = name + b"\0\0" + zlib.compress(im.info["icc_profile"])
+        chunk(fp, b"iCCP", data)
 
     ImageFile._save(im, _idat(fp, chunk), [("zip", (0,0)+im.size, 0, rawmode)])
 
@@ -531,7 +596,7 @@ def getchunks(im, **params):
             self.data.append(chunk)
 
     def append(fp, cid, *data):
-        data = data.join("")
+        data = b"".join(data)
         hi, lo = Image.core.crc32(data, Image.core.crc32(cid))
         crc = o16(hi) + o16(lo)
         fp.append((cid, data, crc))

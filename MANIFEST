@@ -14,6 +14,8 @@ libImaging/QuantHash.h
 libImaging/QuantHeap.h
 libImaging/QuantDefines.h
 libImaging/QuantTypes.h
+libImaging/Tiff.h
+libImaging/TiffDecode.c
 libImaging/Access.c
 libImaging/Antialias.c
 libImaging/Bands.c
@@ -49,6 +51,7 @@ libImaging/RankFilter.c
 libImaging/Storage.c
 libImaging/Unpack.c
 libImaging/UnpackYCC.c
+libImaging/UnsharpMask.c
 libImaging/Bit.h
 libImaging/Gif.h
 libImaging/Jpeg.h
@@ -86,8 +89,8 @@ outline.c
 path.c
 _imagingtk.c
 _imagingft.c
+_imagingcms.c
 _imagingmath.c
-PIL.pth
 PIL/__init__.py
 PIL/ArgImagePlugin.py
 PIL/BdfFontFile.py
@@ -113,6 +116,7 @@ PIL/IcoImagePlugin.py
 PIL/IcnsImagePlugin.py
 PIL/Image.py
 PIL/ImageChops.py
+PIL/ImageCms.py
 PIL/ImageColor.py
 PIL/ImageDraw.py
 PIL/ImageDraw2.py
@@ -130,6 +134,7 @@ PIL/ImagePalette.py
 PIL/ImagePath.py
 PIL/ImageQt.py
 PIL/ImageSequence.py
+PIL/ImageShow.py
 PIL/ImageStat.py
 PIL/ImageTk.py
 PIL/ImageTransform.py
@@ -247,6 +252,7 @@ Scripts/pilfile.py
 Scripts/pilfont.py
 Scripts/pilprint.py
 Images/lena.gif
+Images/lena.png
 Images/lena.ppm
 Images/lena.jpg
 Images/courB08.bdf
@@ -264,7 +270,6 @@ Scripts/README
 Scripts/enhancer.py
 Scripts/explode.py
 Scripts/gifmaker.py
-Scripts/image2py.py
 Scripts/painter.py
 Scripts/player.py
 Scripts/viewer.py

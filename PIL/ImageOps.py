@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: ImageOps.py 2760 2006-06-19 13:31:40Z fredrik $
+# $Id$
 #
 # standard image operations
 #
@@ -17,7 +17,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image
+from . import Image
 import operator
 from functools import reduce
 
@@ -44,7 +44,7 @@ def _border(border):
 
 def _color(color, mode):
     if Image.isStringType(color):
-        import ImageColor
+        from . import ImageColor
         color = ImageColor.getcolor(color, mode)
     return color
 
@@ -127,7 +127,7 @@ def autocontrast(image, cutoff=0, ignore=None):
             # don't bother
             lut.extend(list(range(256)))
         else:
-            scale = 255 / (hi - lo)
+            scale = 255.0 / (hi - lo)
             offset = -lo * scale
             for ix in range(256):
                 ix = int(ix * scale + offset)
@@ -212,11 +212,11 @@ def equalize(image, mask=None):
     for b in range(0, len(h), 256):
         histo = [_f for _f in h[b:b+256] if _f]
         if len(histo) <= 1:
-            lut.extend(list(list(range(256))))
+            lut.extend(list(range(256)))
         else:
             step = (reduce(operator.add, histo) - histo[-1]) / 255
             if not step:
-                lut.extend(list(list(range(256))))
+                lut.extend(list(range(256)))
             else:
                 n = step / 2
                 for i in range(256):
@@ -407,3 +407,34 @@ def solarize(image, threshold=128):
         else:
             lut.append(255-i)
     return _lut(image, lut)
+
+# --------------------------------------------------------------------
+# PIL USM components, from Kevin Cazabon.
+
+def gaussian_blur(im, radius=None):
+    """ PIL_usm.gblur(im, [radius])"""
+
+    if radius is None:
+        radius = 5.0
+
+    im.load()
+
+    return im.im.gaussian_blur(radius)
+
+gblur = gaussian_blur
+
+def unsharp_mask(im, radius=None, percent=None, threshold=None):
+    """ PIL_usm.usm(im, [radius, percent, threshold])"""
+
+    if radius is None:
+        radius = 5.0
+    if percent is None:
+        percent = 150
+    if threshold is None:
+        threshold = 3
+
+    im.load()
+
+    return im.im.unsharp_mask(radius, percent, threshold)
+
+usm = unsharp_mask

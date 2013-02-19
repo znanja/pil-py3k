@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: PdfImagePlugin.py 2438 2005-05-25 21:09:48Z Fredrik $
+# $Id$
 #
 # PDF (Acrobat) file handling
 #
@@ -22,7 +22,7 @@
 
 __version__ = "0.4"
 
-import Image, ImageFile
+from . import Image, ImageFile
 import io
 
 
@@ -133,7 +133,7 @@ def _save(im, fp, filename):
         if bits == 1:
             # FIXME: the hex encoder doesn't support packed 1-bit
             # images; do things the hard way...
-            data = im.tostring("raw", "1")
+            data = im.tobytes("raw", "1")
             im = Image.new("L", (len(data), 1), None)
             im.putdata(data)
         ImageFile._save(im, op, [("hex", (0,0)+im.size, 0, im.mode)])

@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: JpegImagePlugin.py 2763 2006-06-22 21:43:28Z fredrik $
+# $Id$
 #
 # JPEG (JFIF) file handling
 #
@@ -22,6 +22,9 @@
 # 2003-04-25 fl   Added experimental EXIF decoder (0.5)
 # 2003-06-06 fl   Added experimental EXIF GPSinfo decoder
 # 2003-09-13 fl   Extract COM markers
+# 2009-09-06 fl   Added icc_profile support (from Florian Hoech)
+# 2009-03-06 fl   Changed CMYK handling; always use Adobe polarity (0.6)
+# 2009-03-08 fl   Added subsampling support (from Justin Huff).
 #
 # Copyright (c) 1997-2003 by Secret Labs AB.
 # Copyright (c) 1995-1996 by Fredrik Lundh.
@@ -29,10 +32,10 @@
 # See the README file for information on usage and redistribution.
 #
 
-__version__ = "0.5"
+__version__ = "0.6"
 
-import array
-import Image, ImageFile
+import array, struct
+from . import Image, ImageFile
 
 def i16(c,o=0):
     return c[o+1] + (c[o] << 8)
@@ -81,6 +84,19 @@ def APP(self, marker):
     elif marker == 0xFFE2 and s[:5] == b"FPXR\0":
         # extract FlashPix information (incomplete)
         self.info["flashpix"] = s # FIXME: value will change
+    elif marker == 0xFFE2 and s[:12] == b"ICC_PROFILE\0":
+        # Since an ICC profile can be larger than the maximum size of
+        # a JPEG marker (64K), we need provisions to split it into
+        # multiple markers. The format defined by the ICC specifies
+        # one or more APP2 markers containing the following data:
+        #   Identifying string      ASCII "ICC_PROFILE\0"  (12 bytes)
+        #   Marker sequence number  1, 2, etc (1 byte)
+        #   Number of markers       Total of APP2's used (1 byte)
+        #   Profile data            (remainder of APP2 data)
+        # Decoders should use the marker sequence numbers to
+        # reassemble the profile, rather than assuming that the APP2
+        # markers appear in the correct sequence.
+        self.icclist.append(s)
     elif marker == 0xFFEE and s[:5] == b"Adobe":
         self.info["adobe"] = i16(s, 5)
         # extract Adobe custom properties
@@ -128,7 +144,20 @@ def SOF(self, marker):
         raise SyntaxError("cannot handle %d-layer images" % self.layers)
 
     if marker in [0xFFC2, 0xFFC6, 0xFFCA, 0xFFCE]:
-        self.info["progression"] = 1
+        self.info["progressive"] = self.info["progression"] = 1
+
+    if self.icclist:
+        # fixup icc profile
+        self.icclist.sort() # sort by sequence number
+        if self.icclist[0][13] == len(self.icclist):
+            profile = []
+            for p in self.icclist:
+                profile.append(p[14:])
+            icc_profile = b"".join(profile)
+        else:
+            icc_profile = None # wrong number of fragments
+        self.info["icc_profile"] = icc_profile
+        self.icclist = None
 
     for i in range(6, len(s), 3):
         t = s[i:i+3]
@@ -256,6 +285,7 @@ class JpegImageFile(ImageFile.ImageFile):
         self.quantization = {}
         self.app = {} # compatibility
         self.applist = []
+        self.icclist = []
 
         while 1:
 
@@ -271,7 +301,7 @@ class JpegImageFile(ImageFile.ImageFile):
                 if i == 0xFFDA: # start of scan
                     rawmode = self.mode
                     if self.mode == "CMYK":
-                        rawmode = "CMYK;I"
+                        rawmode = "CMYK;I" # assume adobe conventions
                     self.tile = [("jpeg", (0,0) + self.size, 0, (rawmode, ""))]
                     # self.__offset = self.fp.tell()
                     break
@@ -295,12 +325,12 @@ class JpegImageFile(ImageFile.ImageFile):
             a = mode, ""
 
         if size:
-            scale = max(self.size[0] / size[0], self.size[1] / size[1])
+            scale = max(self.size[0] // size[0], self.size[1] // size[1])
             for s in [8, 4, 2, 1]:
                 if scale >= s:
                     break
-            e = e[0], e[1], (e[2]-e[0]+s-1)/s+e[0], (e[3]-e[1]+s-1)/s+e[1]
-            self.size = ((self.size[0]+s-1)/s, (self.size[1]+s-1)/s)
+            e = e[0], e[1], (e[2]-e[0]+s-1)//s+e[0], (e[3]-e[1]+s-1)//s+e[1]
+            self.size = ((self.size[0]+s-1)//s, (self.size[1]+s-1)//s)
             scale = s
 
         self.tile = [(d, e, o, a)]
@@ -331,7 +361,8 @@ class JpegImageFile(ImageFile.ImageFile):
         # Extract EXIF information.  This method is highly experimental,
         # and is likely to be replaced with something better in a future
         # version.
-        import TiffImagePlugin, io
+        import io
+        from . import TiffImagePlugin
         def fixup(value):
             if len(value) == 1:
                 return value[0]
@@ -342,7 +373,7 @@ class JpegImageFile(ImageFile.ImageFile):
             data = self.info["exif"]
         except KeyError:
             return None
-        file = io.StringIO(data[6:])
+        file = io.BytesIO(data[6:])
         head = file.read(8)
         exif = {}
         # process dictionary
@@ -351,11 +382,15 @@ class JpegImageFile(ImageFile.ImageFile):
         for key, value in list(info.items()):
             exif[key] = fixup(value)
         # get exif extension
-        file.seek(exif[0x8769])
-        info = TiffImagePlugin.ImageFileDirectory(head)
-        info.load(file)
-        for key, value in list(info.items()):
-            exif[key] = fixup(value)
+        try:
+            file.seek(exif[0x8769])
+        except KeyError:
+            pass
+        else:
+            info = TiffImagePlugin.ImageFileDirectory(head)
+            info.load(file)
+            for key, value in info.items():
+                exif[key] = fixup(value)
         # get gpsinfo extension
         try:
             file.seek(exif[0x8825])
@@ -378,7 +413,7 @@ RAWMODE = {
     "RGB": "RGB",
     "RGBA": "RGB",
     "RGBX": "RGB",
-    "CMYK": "CMYK;I",
+    "CMYK": "CMYK;I", # assume adobe conventions
     "YCbCr": "YCbCr",
 }
 
@@ -393,17 +428,44 @@ def _save(im, fp, filename):
 
     dpi = info.get("dpi", (0, 0))
 
+    subsampling = info.get("subsampling", -1)
+    if subsampling == "4:4:4":
+        subsampling = 0
+    elif subsampling == "4:2:2":
+        subsampling = 1
+    elif subsampling == "4:1:1":
+        subsampling = 2
+
+    extra = b""
+
+    icc_profile = info.get("icc_profile")
+    if icc_profile:
+        ICC_OVERHEAD_LEN = 14
+        MAX_BYTES_IN_MARKER = 65533
+        MAX_DATA_BYTES_IN_MARKER = MAX_BYTES_IN_MARKER - ICC_OVERHEAD_LEN
+        markers = []
+        while icc_profile:
+            markers.append(icc_profile[:MAX_DATA_BYTES_IN_MARKER])
+            icc_profile = icc_profile[MAX_DATA_BYTES_IN_MARKER:]
+        i = 1
+        for marker in markers:
+            size = struct.pack(">H", 2 + ICC_OVERHEAD_LEN + len(marker))
+            extra = extra + b"\xFF\xE2" + size + b"ICC_PROFILE\0" + bytes([i, len(markers)]) + marker
+            i = i + 1
+
     # get keyword arguments
     im.encoderconfig = (
         info.get("quality", 0),
         # "progressive" is the official name, but older documentation
         # says "progression"
-        # FIXME: issue a warning if the wrong form is used (post-1.1.5)
+        # FIXME: issue a warning if the wrong form is used (post-1.1.7)
         "progressive" in info or "progression" in info,
         info.get("smooth", 0),
         "optimize" in info,
         info.get("streamtype", 0),
-        dpi[0], dpi[1]
+        dpi[0], dpi[1],
+        subsampling,
+        extra,
         )
 
     ImageFile._save(im, fp, [("jpeg", (0,0)+im.size, 0, rawmode)])

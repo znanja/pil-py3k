@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library.
-# $Id: EpsImagePlugin.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # EPS file handling
 #
@@ -20,8 +20,8 @@
 
 __version__ = "0.5"
 
-import re
-import Image, ImageFile
+import re, string
+from . import Image, ImageFile
 
 #
 # --------------------------------------------------------------------
@@ -202,6 +202,10 @@ class EpsImageFile(ImageFile.ImageFile):
                         self.info[k[:8]] = k[9:]
                     else:
                         self.info[k] = ""
+                elif s[0] == b'%':
+                    # handle non-DSC Postscript comments that some
+                    # tools mistakenly put in the Comments section
+                    pass
                 else:
                     raise IOError("bad EPS header")
 

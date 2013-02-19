@@ -1,6 +1,6 @@
 #
 # The Python Imaging Library
-# $Id: ImageDraw.py 2134 2004-10-06 08:55:20Z fredrik $
+# $Id$
 #
 # WCK-style drawing interface operations
 #
@@ -16,7 +16,7 @@
 # See the README file for information on usage and redistribution.
 #
 
-import Image, ImageColor, ImageDraw, ImageFont, ImagePath
+from . import Image, ImageColor, ImageDraw, ImageFont, ImagePath
 
 class Pen:
     def __init__(self, color, width=1, opacity=255):
@@ -81,20 +81,17 @@ class Draw:
     def ellipse(self, xy, *options):
         self.render("ellipse", xy, *options)
 
-    def pieslice(self, xy, start, end, *options):
-        self.render("pieslice", xy, start, end, *options)
-
     def line(self, xy, *options):
         self.render("line", xy, *options)
 
-    def rectangle(self, xy, *options):
-        self.render("rectangle", xy, *options)
-
-    def ellipse(self, xy, *options):
-        self.render("ellipse", xy, *options)
+    def pieslice(self, xy, start, end, *options):
+        self.render("pieslice", xy, start, end, *options)
 
     def polygon(self, xy, *options):
         self.render("polygon", xy, *options)
+
+    def rectangle(self, xy, *options):
+        self.render("rectangle", xy, *options)
 
     def symbol(self, xy, symbol, *options):
         raise NotImplementedError("not in this version")
